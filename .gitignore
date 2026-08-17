@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Environment — never commit real secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Expo / React Native
+# Only the app's *generated* native projects are ignored (expo prebuild output).
+# modules/health-kit/ios/** is hand-written native source and MUST stay tracked.
+.expo/
+.expo-shared/
+/apps/mobile/ios/
+/apps/mobile/android/
+*.jsbundle
+web-build/
+
+# Local database (PGlite dev data directory)
+.data/
+*.sqlite
+*.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Test / coverage
+coverage/
+.vitest/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp

@@ -1,0 +1,32 @@
+{
+  "name": "running-os",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Personal running coach and performance intelligence OS",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r --stream typecheck",
+    "test": "pnpm -r --stream test",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "build": "pnpm -r --stream build",
+    "verify": "pnpm typecheck && pnpm lint && pnpm test",
+    "db:migrate": "pnpm --filter @running/api db:migrate",
+    "db:seed": "pnpm --filter @running/api db:seed",
+    "api:dev": "pnpm --filter @running/api dev",
+    "mobile:start": "pnpm --filter @running/mobile start"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "eslint": "^9.39.1",
+    "prettier": "^3.6.2",
+    "typescript": "5.9.3",
+    "typescript-eslint": "^8.46.0",
+    "vitest": "^4.1.10"
+  }
+}
