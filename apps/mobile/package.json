@@ -1,0 +1,48 @@
+{
+  "name": "@running/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "ios": "expo start --ios",
+    "android": "expo start --android",
+    "web": "expo start --web",
+    "prebuild": "expo prebuild",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "doctor": "npx expo-doctor"
+  },
+  "dependencies": {
+    "@running/contracts": "workspace:*",
+    "@running/core": "workspace:*",
+    "@running/health-kit": "workspace:*",
+    "expo": "~57.0.14",
+    "expo-constants": "~57.0.12",
+    "expo-linking": "~57.0.6",
+    "expo-router": "~57.0.14",
+    "expo-secure-store": "~57.0.1",
+    "expo-status-bar": "~57.0.1",
+    "expo-web-browser": "~57.0.2",
+    "react": "19.2.3",
+    "react-native": "0.86.2",
+    "react-native-gesture-handler": "~2.32.0",
+    "react-native-reanimated": "4.5.1",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "~4.26.0",
+    "react-native-svg": "15.15.4",
+    "@react-native-async-storage/async-storage": "2.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "typescript": "5.9.3",
+    "vitest": "^4.1.10"
+  },
+  "expo": {
+    "install": {
+      "exclude": [
+        "typescript"
+      ]
+    }
+  }
+}
