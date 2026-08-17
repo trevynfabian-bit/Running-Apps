@@ -125,7 +125,7 @@ export function useQuery<T>(
     } finally {
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Deps are supplied by the caller and intentionally dynamic.
   }, deps);
 
   useEffect(() => {
