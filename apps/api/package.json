@@ -1,0 +1,33 @@
+{
+  "name": "@running/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Backend API: providers, sync, coaching services.",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "node --import tsx/esm --watch src/index.ts",
+    "start": "node --import tsx/esm src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:migrate": "node --import tsx/esm src/db/migrate.ts",
+    "db:seed": "node --import tsx/esm src/seed/index.ts"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.5",
+    "@hono/node-server": "^1.15.0",
+    "@running/contracts": "workspace:*",
+    "@running/core": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.13.2",
+    "postgres": "^3.4.5",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "drizzle-kit": "^0.31.10",
+    "tsx": "^4.19.2",
+    "typescript": "5.9.3",
+    "vitest": "^4.1.10"
+  }
+}
