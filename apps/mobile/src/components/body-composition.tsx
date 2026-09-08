@@ -286,3 +286,55 @@ export function PhotoStrip({
     </Stack>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Quick actions
+// ---------------------------------------------------------------------------
+
+export interface QuickAction {
+  key: string;
+  label: string;
+  /** One line on what the action leads to. */
+  hint: string;
+  /** Text glyph, matching the tab bar's dependency-free icons. */
+  glyph: string;
+  onPress: () => void;
+}
+
+/**
+ * The three things an athlete does from the summary: record a new session,
+ * log tape measurements, compare sessions. Tiles rather than a menu so each
+ * one can say what it leads to.
+ */
+export function QuickActions({ actions }: { actions: readonly QuickAction[] }): React.ReactElement {
+  return (
+    <View>
+      <SectionHeader title="Quick actions" />
+      <Stack direction="row" gap={spacing.sm}>
+        {actions.map((action) => (
+          <Card
+            key={action.key}
+            onPress={action.onPress}
+            accessibilityLabel={`${action.label}. ${action.hint}`}
+            style={{
+              flex: 1,
+              paddingHorizontal: spacing.md,
+              paddingVertical: spacing.md,
+              minHeight: 96,
+            }}
+          >
+            <Stack gap={spacing.xs}>
+              <Type variant="metricSmall" tone="accent">
+                {action.glyph}
+              </Type>
+              <Type variant="bodyStrong">{action.label}</Type>
+              <Type variant="caption" tone="tertiary" numberOfLines={2}>
+                {action.hint}
+              </Type>
+            </Stack>
+          </Card>
+        ))}
+      </Stack>
+    </View>
+  );
+}

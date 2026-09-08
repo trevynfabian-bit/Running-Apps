@@ -3,7 +3,7 @@
     "summary": "Skill Claude Code untuk NgodingPakeAI yang dipasang oleh perintah init: instruksi agen untuk connect, index, dan sync repo ini ke workspace NgodingPakeAI, alur sync (doctor, connect, sync --plan, tulis summaries.json, sync, status), format summaries.json (objek datar ber-key path dengan summary dan sections), aturan keras (hanya lewat CLI, kode mentah tidak pernah diunggah, tanpa secret, workspace tetap), referensi perintah CLI, dan alur mengerjakan task satu per satu lewat task next dengan checkpoint per layer dan fase."
   },
   ".gitignore": {
-    "summary": "Daftar path yang diabaikan git: node_modules dan pnpm store, output build (dist, build, tsbuildinfo), file .env kecuali .env.example, output prebuild Expo (apps/mobile/ios, apps/mobile/android, .expo), data PGlite lokal (.data, sqlite, db), log, coverage, dan file editor. Catatan penting: modules/health-kit/ios adalah source native tulisan tangan dan tetap dilacak."
+    "summary": "Daftar path yang diabaikan git: node_modules dan pnpm store, output build (dist, build, tsbuildinfo), file .env kecuali .env.example, output prebuild Expo (apps/mobile/ios, apps/mobile/android, .expo), data PGlite lokal (.data, sqlite, db), log, coverage, file editor, serta file kerja CLI NgodingPakeAI .ngodingpakeai/pending.json yang dibuat ulang tiap sync --plan. Catatan penting: modules/health-kit/ios adalah source native tulisan tangan dan tetap dilacak."
   },
   ".ngodingpakeaiignore": {
     "summary": "File ignore tambahan untuk sync NgodingPakeAI dengan sintaks .gitignore. Saat ini hanya berisi komentar dan contoh, karena secret, node_modules, output build, dan file .env sudah diblokir CLI secara default."
@@ -440,7 +440,7 @@
     "summary": "Konfigurasi Metro untuk monorepo pnpm: watchFolders ke root workspace agar perubahan packages/* memicu reload, nodeModulesPaths app dan root, hierarchical lookup tetap aktif untuk layout symlink pnpm, dan resolveRequest kustom yang menulis ulang specifier relatif berakhiran .js ke file .ts, .tsx, .mts, atau .cts yang ada di disk sehingga package bersama tetap memakai import ESM yang benar."
   },
   "apps/mobile/app/_layout.tsx": {
-    "summary": "Root layout Expo Router: membungkus app dengan GestureHandlerRootView, SafeAreaProvider, ThemeProvider, dan SessionProvider. RootNavigator memakai Stack.Protected berdasarkan status sesi dari useSession: loading menampilkan LoadingState; signed_out hanya membuka sign-in; signed_in tanpa onboarding hanya membuka onboarding; signed_in lengkap membuka (tabs), connections, workout/[id], dan modal why."
+    "summary": "Root layout Expo Router: membungkus app dengan GestureHandlerRootView, SafeAreaProvider, ThemeProvider, dan SessionProvider. RootNavigator memakai Stack.Protected berdasarkan status sesi dari useSession: loading menampilkan LoadingState; signed_out hanya membuka sign-in; signed_in tanpa onboarding hanya membuka onboarding; signed_in lengkap membuka (tabs), connections, workout/[id], modal why, serta layar modul komposisi tubuh body-composition/index (ringkasan), body-composition/new-session, body-composition/measure, dan body-composition/compare."
   },
   "apps/mobile/app/(tabs)/_layout.tsx": {
     "summary": "Layout tab bawah dengan lima tujuan yang memetakan lima pertanyaan produk: index (Home, apa sekarang), plan (apa berikutnya), train (lakukan), progress (apakah membaik), coach (mengapa). Ikon berupa glyph teks tanpa paket ikon; warna dari useTheme."
@@ -455,7 +455,15 @@
     "summary": "Layar Plan: memuat api.plan. Bila belum ada plan, menampilkan pemilih template (beginner_5k, improve_5k, road_10k, half_marathon, marathon, aerobic_base, return_to_running, general_fitness) dan tombol Build my plan yang memanggil api.generatePlan dengan race goal pertama dari api.raceGoals. Bila ada plan: kartu blok berjalan beserta tujuannya, catatan generationBasis tentang bagaimana plan dibuat, lalu daftar minggu dengan ProgressBar jarak selesai vs target dan setiap sesi (label hari, judul, jarak, StatusChip Done, Adjusted, Skipped, Partial)."
   },
   "apps/mobile/app/(tabs)/progress.tsx": {
-    "summary": "Layar Progress yang menjawab apakah atlet benar-benar makin fit: pemilih window 4, 8, atau 12 minggu, memuat api.progress. Bagian Fitness (estimated VO2max dengan basis, threshold pace, easy pace range, TrendRow efisiensi aerobik dengan ringkasan), Training (Sparkline jarak mingguan dan tren volume), Recovery (Sparkline readiness, tren HRV dan resting HR), Body (berat dan tren), dan Race predictions per jarak dengan pace dan confidence. Setiap proyeksi diberi label estimasi."
+    "summary": "Layar Progress yang menjawab apakah atlet benar-benar makin fit: pemilih window 4, 8, atau 12 minggu, memuat api.progress. Bagian Fitness (estimated VO2max dengan basis, threshold pace, easy pace range, TrendRow efisiensi aerobik dengan ringkasan), Training (Sparkline jarak mingguan dan tren volume), Recovery (Sparkline readiness, tren HRV dan resting HR), Body (berat dan tren), kartu entry Body composition yang menavigasi ke /body-composition (modul komposisi tubuh), dan Race predictions per jarak dengan pace dan confidence. Setiap proyeksi diberi label estimasi.",
+    "sections": [
+      {
+        "symbol": "Body composition entry card",
+        "startLine": 268,
+        "endLine": 287,
+        "summary": "Kartu pressable dengan SectionHeader Body composition yang membuka layar ringkasan komposisi tubuh lewat router.push."
+      }
+    ]
   },
   "apps/mobile/app/(tabs)/train.tsx": {
     "summary": "Layar Train: pemutar sesi terstruktur untuk todayWorkout dari api.dashboard. flattenStructure mengubah warmup, main (step dan repeat), dan cooldown menjadi daftar langkah linear dengan label repetisi; timer per detik dengan auto-advance saat langkah berdurasi selesai; tombol Start atau Resume, Pause, Next step, dan Finish and log yang memanggil api.logWorkout lalu me-refresh dashboard. Secara sengaja tidak menampilkan pace, jarak, atau HR live karena diimpor dari Strava atau HealthKit setelah lari. Menampilkan daftar langkah sesi dan zona HR referensi sesuai metodologi atlet."
@@ -1038,5 +1046,107 @@
   },
   "packages/core/src/util/time.test.ts": {
     "summary": "Test waktu: toLocalDate (hari lokal bukan UTC, lintas date line, timezone di belakang UTC), addDaysToLocalDate (tambah dan kurang, lintas bulan dan tahun, leap day, tanpa drift DST), daysBetweenLocalDates termasuk lintas DST, startOfWeek (Senin, Minggu sebagai akhir minggu, idempoten), isoWeekKey (sortable, sama untuk satu minggu, beda antar minggu), localDateRange, localDayOfWeek, overlapSeconds."
+  },
+  "apps/mobile/app/body-composition/index.tsx": {
+    "summary": "Layar Ringkasan Komposisi (route /body-composition), pintu depan modul komposisi tubuh. Memuat bodyComposition.summary lewat useQuery dengan opsi scenario dari query param (stub-only, ?scenario=empty untuk pratinjau first-run), menangani loading, error, dan stale. Menampilkan judul dan deskripsi, LatestStatusCard untuk sesi terbaru atau LatestStatusEmpty dengan aksi mulai sesi bila belum ada sesi, QuickActions tiga aksi (New session ke /body-composition/new-session, Measurements ke /body-composition/measure, Compare ke /body-composition/compare), dan keterangan jumlah sesi sejak tanggal sesi terlama.",
+    "sections": [
+      {
+        "symbol": "openNewSession, openMeasurements, openComparison, QUICK_ACTIONS",
+        "startLine": 37,
+        "endLine": 63,
+        "summary": "Handler navigasi expo-router dan definisi tiga aksi cepat dengan label, hint, dan glyph."
+      },
+      {
+        "symbol": "BodyCompositionScreen",
+        "startLine": 65,
+        "endLine": 137,
+        "summary": "Komponen layar: query stub dengan skenario, state loading dan error, lalu susunan judul, status terakhir atau empty state, aksi cepat, dan keterangan jumlah sesi."
+      }
+    ]
+  },
+  "apps/mobile/app/body-composition/new-session.tsx": {
+    "summary": "Layar placeholder New session (route /body-composition/new-session) untuk alur fase 2 potret empat sisi: menjelaskan bahwa sesi merekam foto lalu ukuran, menampilkan EmptyState bahwa pengambilan foto belum dibangun dan data saat ini berasal dari sampel, dengan tombol kembali ke ringkasan. Ada agar aksi cepat tidak mendarat di unmatched route."
+  },
+  "apps/mobile/app/body-composition/measure.tsx": {
+    "summary": "Layar placeholder Measurements (route /body-composition/measure) untuk alur fase 2 catat lingkar tubuh: menjelaskan pengukuran pada titik tetap dengan pita dalam cm atau inci dan riwayat per titik, menampilkan EmptyState bahwa entri ukuran belum dibangun, dengan tombol kembali ke ringkasan."
+  },
+  "apps/mobile/app/body-composition/compare.tsx": {
+    "summary": "Layar placeholder Compare sessions (route /body-composition/compare) untuk alur fase 3 perbandingan antar-sesi: menjelaskan foto sebelum-sesudah dan tren ukuran, berat, serta estimasi lemak, menampilkan EmptyState bahwa perbandingan belum dibangun, dengan tombol kembali ke ringkasan."
+  },
+  "apps/mobile/src/components/body-composition.tsx": {
+    "summary": "Komponen UI modul komposisi tubuh. LatestStatusCard menampilkan sesi terbaru dalam satu kartu (tanggal dan berapa hari lalu, BodyFatRange, MeasurementTiles, PhotoStrip) dengan onPress opsional. LatestStatusEmpty adalah first-run state berbasis EmptyState yang menjelaskan isi sebuah sesi dan dapat menawarkan aksi mulai sesi. BodyFatRange merender estimasi lemak hanya sebagai rentang dengan chip metode (Tape formula atau Photo AI) dan chip confidence plus catatan non-medis. MeasurementTiles menampilkan beberapa titik ukur dan berat dengan label aksesibilitas. PhotoStrip menampilkan empat sisi (front, back, left, right) dalam urutan tetap, Image bila ada uri atau placeholder No preview. QuickAction dan QuickActions merender tiga kartu aksi dengan glyph, label, dan hint.",
+    "sections": [
+      {
+        "symbol": "LatestStatusCard",
+        "startLine": 45,
+        "endLine": 95,
+        "summary": "Kartu sesi terbaru: header tanggal dan formatDaysAgo, estimasi utama lewat primaryEstimate, tile ukuran dari SUMMARY_POINT_CODES, strip foto."
+      },
+      {
+        "symbol": "LatestStatusEmpty",
+        "startLine": 101,
+        "endLine": 120,
+        "summary": "Empty state pertama kali dengan aksi opsional Start your first session."
+      },
+      {
+        "symbol": "BodyFatRange",
+        "startLine": 131,
+        "endLine": 163,
+        "summary": "Rentang estimasi lemak dengan chip metode dan confidence, label aksesibilitas, dan pesan bila belum ada estimasi."
+      },
+      {
+        "symbol": "MeasurementTiles",
+        "startLine": 169,
+        "endLine": 220,
+        "summary": "Tile ukuran lingkar terpilih dan berat, atau pesan bila sesi tidak punya ukuran."
+      },
+      {
+        "symbol": "PhotoStrip",
+        "startLine": 226,
+        "endLine": 287,
+        "summary": "Empat tile foto rasio 3:4 dalam urutan sisi tetap, dengan placeholder saat uri tidak ada dan ukuran small atau large."
+      },
+      {
+        "symbol": "QuickAction, QuickActions",
+        "startLine": 294,
+        "endLine": 340,
+        "summary": "Tipe aksi cepat dan baris tiga kartu pressable dengan glyph, label, dan hint."
+      }
+    ]
+  },
+  "apps/mobile/src/lib/body-composition.ts": {
+    "summary": "Lapisan data modul komposisi tubuh (frontend-first, saat ini berbasis stub). Tipe yang mencerminkan tabel dan DTO yang direncanakan: PhotoSide dan PHOTO_SIDES, MeasurementUnit (cm, in), BodyFatMethod (formula, ai), AiServiceStatus, ConfidenceLabel, CircumferencePoint, CompositionPhoto, BodyMeasurement, BodyFatEstimate (selalu rentang valueLow dan valueHigh dengan confidenceLabel), BodyCompositionSession, BodyCompositionSummary. Helper presentasi: convertCircumference, formatCircumference, formatBodyFatRange, formatBodyFatMethod, formatSessionDate, formatDaysAgo, primaryEstimate, SUMMARY_POINT_CODES. Data stub: CIRCUMFERENCE_POINTS delapan titik ukur dengan guide text, STUB_SESSIONS empat sesi bulanan dengan tren realistis, buildStubSummary. StubScenario dan stubScenarioFromParam untuk pratinjau skenario empty. Objek bodyComposition dengan summary() yang meniru bentuk api di api.ts dan mengembalikan ApiResult, siap diganti request ke endpoint API.",
+    "sections": [
+      {
+        "symbol": "types",
+        "startLine": 25,
+        "endLine": 107,
+        "summary": "Tipe domain modul: sisi foto, satuan, metode dan status estimasi, titik ukur, foto, ukuran, estimasi, sesi, dan ringkasan."
+      },
+      {
+        "symbol": "convertCircumference, formatCircumference, formatBodyFatRange, formatBodyFatMethod, formatSessionDate, formatDaysAgo, primaryEstimate",
+        "startLine": 113,
+        "endLine": 188,
+        "summary": "Helper konversi dan format untuk tampilan, pemilihan estimasi utama (formula lebih dulu, lalu AI aktif), dan daftar titik ukur yang ditampilkan di ringkasan."
+      },
+      {
+        "symbol": "CIRCUMFERENCE_POINTS",
+        "startLine": 198,
+        "endLine": 261,
+        "summary": "Katalog delapan titik ukur (neck, chest, waist, hips, left_arm, right_arm, left_thigh, right_thigh) dengan petunjuk posisi pita dan sortOrder."
+      },
+      {
+        "symbol": "STUB_SESSIONS, buildStubSummary",
+        "startLine": 263,
+        "endLine": 409,
+        "summary": "Empat sesi contoh Juni sampai September 2026 dengan ukuran cm, berat, estimasi formula, dan estimasi AI (aktif atau unavailable), dirakit menjadi BodyCompositionSummary."
+      },
+      {
+        "symbol": "StubScenario, stubScenarioFromParam, bodyComposition",
+        "startLine": 411,
+        "endLine": 444,
+        "summary": "Skenario stub sessions atau empty dari query param dan sumber data bodyComposition.summary dengan latensi kecil buatan."
+      }
+    ]
   }
 }

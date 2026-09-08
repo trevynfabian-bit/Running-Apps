@@ -5,7 +5,8 @@
  * and measure right now? — with the latest session in a single card: the
  * body-fat estimate as a labelled range, a handful of tape measurements, and
  * the four-sided portrait. With no sessions yet it explains what a session is
- * instead of showing an empty chart.
+ * instead of showing an empty chart. Three quick actions lead to the things
+ * an athlete does next: a new session, logging measurements, comparing.
  *
  * Every number here is a measurement the athlete took or an estimate derived
  * from one. Estimates are shown as ranges with their method and confidence and
@@ -14,7 +15,7 @@
 
 import React from 'react';
 import { RefreshControl } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 
 import {
   bodyComposition,
@@ -26,7 +27,40 @@ import { useQuery } from '../../src/lib/session';
 import { spacing } from '../../src/design/tokens';
 import { useTheme } from '../../src/design/theme';
 import { ErrorState, LoadingState, Screen, Stack, Type } from '../../src/components/primitives';
-import { LatestStatusCard, LatestStatusEmpty } from '../../src/components/body-composition';
+import {
+  LatestStatusCard,
+  LatestStatusEmpty,
+  QuickActions,
+  type QuickAction,
+} from '../../src/components/body-composition';
+
+const openNewSession = (): void => router.push('/body-composition/new-session');
+const openMeasurements = (): void => router.push('/body-composition/measure');
+const openComparison = (): void => router.push('/body-composition/compare');
+
+const QUICK_ACTIONS: readonly QuickAction[] = [
+  {
+    key: 'session',
+    label: 'New session',
+    hint: 'Four photos, then your measurements',
+    glyph: '▣',
+    onPress: openNewSession,
+  },
+  {
+    key: 'measure',
+    label: 'Measurements',
+    hint: 'Log tape values in cm or inches',
+    glyph: '≡',
+    onPress: openMeasurements,
+  },
+  {
+    key: 'compare',
+    label: 'Compare',
+    hint: 'Two sessions side by side',
+    glyph: '⇄',
+    onPress: openComparison,
+  },
+];
 
 export default function BodyCompositionScreen(): React.ReactElement {
   const theme = useTheme();
@@ -83,7 +117,13 @@ export default function BodyCompositionScreen(): React.ReactElement {
           ) : null}
         </Stack>
 
-        {latest ? <LatestStatusCard session={latest} /> : <LatestStatusEmpty />}
+        {latest ? (
+          <LatestStatusCard session={latest} />
+        ) : (
+          <LatestStatusEmpty onStartSession={openNewSession} />
+        )}
+
+        <QuickActions actions={QUICK_ACTIONS} />
 
         {oldest ? (
           <Type variant="caption" tone="tertiary">
