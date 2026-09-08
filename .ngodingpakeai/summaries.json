@@ -1,0 +1,1042 @@
+{
+  ".claude/skills/ngodingpakeai/SKILL.md": {
+    "summary": "Skill Claude Code untuk NgodingPakeAI yang dipasang oleh perintah init: instruksi agen untuk connect, index, dan sync repo ini ke workspace NgodingPakeAI, alur sync (doctor, connect, sync --plan, tulis summaries.json, sync, status), format summaries.json (objek datar ber-key path dengan summary dan sections), aturan keras (hanya lewat CLI, kode mentah tidak pernah diunggah, tanpa secret, workspace tetap), referensi perintah CLI, dan alur mengerjakan task satu per satu lewat task next dengan checkpoint per layer dan fase."
+  },
+  ".gitignore": {
+    "summary": "Daftar path yang diabaikan git: node_modules dan pnpm store, output build (dist, build, tsbuildinfo), file .env kecuali .env.example, output prebuild Expo (apps/mobile/ios, apps/mobile/android, .expo), data PGlite lokal (.data, sqlite, db), log, coverage, dan file editor. Catatan penting: modules/health-kit/ios adalah source native tulisan tangan dan tetap dilacak."
+  },
+  ".ngodingpakeaiignore": {
+    "summary": "File ignore tambahan untuk sync NgodingPakeAI dengan sintaks .gitignore. Saat ini hanya berisi komentar dan contoh, karena secret, node_modules, output build, dan file .env sudah diblokir CLI secara default."
+  },
+  ".prettierrc.json": {
+    "summary": "Konfigurasi Prettier untuk seluruh monorepo: semicolon aktif, single quote, trailing comma all, printWidth 100, tab 2 spasi, arrowParens always."
+  },
+  "AGENTS.md": {
+    "summary": "File aturan agen yang ditulis oleh perintah init NgodingPakeAI. Berisi salinan skill ngodingpakeai (workspace id, cara sync bekerja, format summaries.json, hard rules, referensi CLI, dan alur task) yang dibungkus marker ngodingpakeai:skill, sehingga agen AI apa pun yang membaca AGENTS.md memuat instruksi yang sama dengan skill Claude Code."
+  },
+  "README.md": {
+    "summary": "Dokumentasi utama Running OS: pelatih lari personal dan sistem performance intelligence yang menggabungkan Strava, WHOOP, dan Apple Health menjadi satu riwayat latihan terdeduplikasi, mengestimasi fitness dan recovery, membuat plan periodisasi, lalu mengadaptasinya harian dengan penjelasan. Menjelaskan quick start (pnpm install, db:migrate, db:seed, api:dev, mobile:start), struktur workspace (packages/core, packages/contracts, apps/api, apps/mobile, modules/health-kit, docs), prinsip kunci (dedup lintas provider, keputusan deterministik dan LLM hanya menjelaskan, estimasi berlabel confidence, recovery komposit sendiri, bukan klinisi), konfigurasi env, perintah test, status fitur, dan known gaps."
+  },
+  "eslint.config.mjs": {
+    "summary": "Konfigurasi ESLint flat config untuk seluruh monorepo: ignore node_modules, dist, build, .expo, coverage, .data, file json, folder drizzle, dan output prebuild mobile; memakai preset js recommended dan typescript-eslint recommended; aturan no-unused-vars dengan pengecualian prefix underscore, no-explicit-any error, no-console warn (diizinkan di test, scripts, seed, file config), eqeqeq, prefer-const, no-var; override CommonJS untuk apps/mobile/metro.config.js dan file JS di modules (require dan module diizinkan)."
+  },
+  "package.json": {
+    "summary": "Manifest root monorepo running-os (private) dengan packageManager pnpm 10 dan Node 22 ke atas. Script agregat: typecheck, test, lint, lint:fix, format, format:check, build, verify (typecheck + lint + test), db:migrate dan db:seed (filter @running/api), api:dev, mobile:start. DevDependencies bersama: eslint, @eslint/js, typescript-eslint, prettier, typescript 5.9.3, vitest 4."
+  },
+  "pnpm-workspace.yaml": {
+    "summary": "Definisi workspace pnpm: packages/*, apps/*, modules/*. publicHoistPattern '*' agar react dan react-native hanya punya satu salinan hoisted sehingga Metro/Expo tidak mengalami duplicate-instance."
+  },
+  "pnpm-lock.yaml": {
+    "summary": "Lockfile pnpm yang mengunci versi seluruh dependensi workspace (hono, drizzle-orm, pglite, postgres, zod, expo 57, react-native 0.86, react 19, vitest, typescript, eslint, prettier, beserta transitifnya). Dihasilkan otomatis oleh pnpm install dan tidak diedit manual."
+  },
+  "tsconfig.base.json": {
+    "summary": "Konfigurasi TypeScript dasar yang di-extend semua package: target ES2022, module ESNext, moduleResolution Bundler, strict penuh termasuk noUncheckedIndexedAccess, noImplicitOverride, noFallthroughCasesInSwitch, noUnusedLocals dan noUnusedParameters, declaration, declarationMap, dan sourceMap aktif; exclude node_modules, dist, build, .expo."
+  },
+  "apps/api/package.json": {
+    "summary": "Manifest @running/api (ESM). Script dev (node --watch dengan loader tsx), start, typecheck, test (vitest), db:migrate, db:seed. Dependensi: @electric-sql/pglite, @hono/node-server, hono, drizzle-orm, postgres, zod, serta workspace @running/core dan @running/contracts. DevDependencies: drizzle-kit, tsx, vitest, @types/node, typescript."
+  },
+  "apps/api/tsconfig.json": {
+    "summary": "Konfigurasi TypeScript apps/api: extends tsconfig.base.json, rootDir src, outDir dist, noEmit, types node, lib ES2022, include src/**."
+  },
+  "apps/api/drizzle.config.ts": {
+    "summary": "Konfigurasi drizzle-kit: schema di src/db/schema.ts, output folder drizzle, dialect postgresql, mode strict dan verbose. Migrasi digenerate dari schema dan dijalankan oleh src/db/migrate.ts terhadap PGlite maupun Postgres asli."
+  },
+  "apps/api/drizzle/meta/_journal.json": {
+    "summary": "Jurnal migrasi drizzle-kit (versi 7, dialect postgresql) dengan satu entri migrasi bertag 0000_init."
+  },
+  "apps/api/drizzle/0000_init.sql": {
+    "summary": "Migrasi SQL awal yang digenerate drizzle-kit dari schema.ts. Membuat 28 tabel: users, athlete_profiles, body_measurements, provider_connections, strava_activities, whoop_cycles, whoop_recoveries, whoop_sleep, whoop_workouts, healthkit_samples, canonical_workouts, workout_sources, training_plans, training_blocks, planned_workouts, race_goals, race_results, check_ins, recovery_states, training_loads, coach_decisions, coach_insights, coach_memory, coach_conversations, weekly_summaries, sync_jobs, sync_events, audit_logs. Menambahkan foreign key ON DELETE cascade ke athlete_profiles, provider_connections, training_plans, training_blocks, canonical_workouts, serta unique index idempotensi seperti (connection_id, external_id) pada tabel provider, (provider, external_id) pada workout_sources, (athlete_id, date) pada tabel state harian, (athlete_id, provider) pada provider_connections, dan (provider, event_key) pada sync_events."
+  },
+  "apps/api/drizzle/meta/0000_snapshot.json": {
+    "summary": "Snapshot skema drizzle-kit (versi 7) untuk migrasi 0000_init: definisi lengkap kolom, tipe, default, foreign key, dan index untuk setiap tabel di schema public. Dipakai drizzle-kit untuk menghitung diff pada migrasi berikutnya; tidak diedit manual."
+  },
+  "apps/api/src/index.ts": {
+    "summary": "Bootstrap server API: memuat env(), menjalankan runMigrations, membuat app Hono lewat createApp, serve di API_PORT dengan @hono/node-server, dan menjalankan worker in-process yang memanggil processQueuedJobs tiap 15 detik untuk menguras antrean sync_jobs. Menangani SIGINT dan SIGTERM untuk shutdown rapi dan mencatat kegagalan start lewat logger."
+  },
+  "apps/api/src/app.ts": {
+    "summary": "Perakitan aplikasi Hono lewat createApp: middleware CORS, logging request tanpa body, endpoint GET /health, satu batas autentikasi terpusat untuk /api/* dengan allowlist path publik (/api/auth/*, /api/webhooks/*, /api/connections/:provider/callback) yang selain itu memanggil requireAuth. Memount router authRoutes di /api/auth, connectionRoutes di /api/connections, webhookRoutes di /api/webhooks, dan appRoutes di /api. Error boundary mengubah ApiError dan ZodError menjadi envelope error stabil (code, message, details), error lain menjadi 500 generik dengan detail hanya di log; notFound mengembalikan 404 JSON.",
+    "sections": [
+      {
+        "symbol": "createApp",
+        "startLine": 21,
+        "endLine": 130,
+        "summary": "Membangun instance Hono: CORS, logger request, /health, middleware auth dengan PUBLIC_PATHS, mounting empat router, onError untuk ApiError/ZodError/500, dan notFound 404."
+      }
+    ]
+  },
+  "apps/api/src/env.ts": {
+    "summary": "Konfigurasi environment yang divalidasi zod sekali saat boot: NODE_ENV, API_PORT, API_PUBLIC_URL, DATABASE_URL, PGLITE_DIR, AUTH_JWT_SECRET, TOKEN_ENCRYPTION_KEY, USE_MOCK_DATA, kredensial Strava dan WHOOP (client id, client secret, redirect uri, webhook verify token atau secret), serta AI_API_KEY, AI_MODEL, AI_BASE_URL. loadEnv menghitung flag stravaConfigured, whoopConfigured, aiConfigured dan menolak start di production tanpa JWT secret minimal 32 karakter, encryption key 64 hex, dan DATABASE_URL. env() meng-cache hasil; setEnvForTesting mengganti cache untuk test."
+  },
+  "apps/api/src/errors.ts": {
+    "summary": "Kelas ApiError (status HTTP, code dari API_ERROR_CODES, pesan yang aman ditampilkan ke atlet, details opsional) dengan toBody untuk envelope error, plus helper pembuat error: notFound (404), badRequest (400 validation_failed), providerNotConnected (409), providerUnavailable (503), tokenExpired (401)."
+  },
+  "apps/api/src/db/client.ts": {
+    "summary": "Klien database Drizzle dengan dua driver dan satu schema: postgres-js bila DATABASE_URL diset (pool max 10, connect timeout 10 detik), selain itu PGlite embedded pada folder PGLITE_DIR atau memory:// untuk test. getDb mengembalikan handle singleton berisi db, raw driver, kind (pglite atau postgres), dan close; resetDbForTesting mengosongkan cache handle."
+  },
+  "apps/api/src/db/migrate.ts": {
+    "summary": "Runner migrasi: runMigrations membuka handle DB lalu memanggil migrator drizzle sesuai driver (pglite atau postgres-js) dengan folder migrasi apps/api/drizzle (MIGRATIONS_FOLDER). Migrasi yang sudah diterapkan dicatat di tabel __drizzle_migrations sehingga aman diulang. Bisa dijalankan langsung sebagai script pnpm db:migrate."
+  },
+  "apps/api/src/db/schema.ts": {
+    "summary": "Skema PostgreSQL via Drizzle, sumber kebenaran migrasi. Konvensi: timestamptz UTC, tanggal latihan sebagai date lokal atlet, unique (connection, external_id) pada tabel provider untuk idempotensi, payload raw disimpan. Tabel identitas: users, athleteProfiles (JSONB background, availability, constraints, notifications, marker HR, hasCompletedOnboarding), bodyMeasurements append-only per provider. providerConnections menyimpan status, externalUserId, scopes, token OAuth terenkripsi, syncCursor. Tabel raw provider: stravaActivities, whoopCycles, whoopRecoveries, whoopSleep, whoopWorkouts, healthkitSamples. canonicalWorkouts (riwayat terdeduplikasi) dan workoutSources (join provenance dengan contributedFields). Planning: trainingPlans, trainingBlocks, plannedWorkouts, raceGoals, raceResults. State harian: checkIns, recoveryStates, trainingLoads, coachDecisions, coachInsights, coachMemory, coachConversations, weeklySummaries. Operasional: syncJobs (antrean durable dengan runAfter), syncEvents (webhook dedup event_key), auditLogs. Mengekspor objek schema untuk drizzle.",
+    "sections": [
+      {
+        "symbol": "users, athleteProfiles, bodyMeasurements",
+        "startLine": 40,
+        "endLine": 110,
+        "summary": "Tabel identitas: kredensial user, profil atlet dengan preferensi JSONB dan marker fisiologis, serta pengukuran tubuh append-only unik per (athlete, metric, provider, measuredAt)."
+      },
+      {
+        "symbol": "providerConnections",
+        "startLine": 116,
+        "endLine": 146,
+        "summary": "Koneksi provider per (athlete, provider): status, externalUserId untuk routing webhook, scopes, token terenkripsi AES-256-GCM, lastSyncedAt, lastSyncError, syncCursor."
+      },
+      {
+        "symbol": "stravaActivities, whoopCycles, whoopRecoveries, whoopSleep, whoopWorkouts, healthkitSamples",
+        "startLine": 152,
+        "endLine": 367,
+        "summary": "Tabel rekaman mentah per provider dengan kolom ternormalisasi plus jsonb raw, unik pada (connectionId, externalId), id WHOOP disimpan sebagai text."
+      },
+      {
+        "symbol": "canonicalWorkouts, workoutSources",
+        "startLine": 373,
+        "endLine": 438,
+        "summary": "Workout kanonis terdeduplikasi (metrik, splits, samples, route, sourceConfidence, plannedWorkoutId, analysis) dan tabel sumber dengan PK gabungan serta unique (provider, externalId)."
+      },
+      {
+        "symbol": "trainingPlans, trainingBlocks, plannedWorkouts, raceGoals, raceResults",
+        "startLine": 444,
+        "endLine": 551,
+        "summary": "Tabel perencanaan: plan dengan generationBasis, blok periodisasi dengan target jarak mingguan, sesi terjadwal dengan structure dan modifiedFrom, target lomba, dan hasil lomba sebagai jangkar fitness."
+      },
+      {
+        "symbol": "checkIns, recoveryStates, trainingLoads, coachDecisions, coachInsights, coachMemory, coachConversations, weeklySummaries",
+        "startLine": 557,
+        "endLine": 711,
+        "summary": "State harian turunan yang unik per (athleteId, date) atau week_start, memori coach (stated_preference, observed_pattern, temporary_condition), dan riwayat percakapan coach."
+      },
+      {
+        "symbol": "syncJobs, syncEvents, auditLogs",
+        "startLine": 717,
+        "endLine": 787,
+        "summary": "Antrean sync durable dengan attempts dan runAfter untuk backoff, event webhook dengan unique (provider, eventKey), dan audit log tanpa token atau nilai kesehatan mentah."
+      },
+      {
+        "symbol": "schema",
+        "startLine": 789,
+        "endLine": 818,
+        "summary": "Objek schema yang mengumpulkan seluruh tabel untuk klien Drizzle."
+      }
+    ]
+  },
+  "apps/api/src/observability/logger.ts": {
+    "summary": "Logger terstruktur JSON dengan redaksi wajib: fungsi redact menyamarkan nilai untuk key yang cocok pola token, secret, password, authorization, api key, refresh, bearer, signature, cookie di semua level nesting dan aman terhadap referensi siklik. Level dari LOG_LEVEL (default info, error saat NODE_ENV test). Mengekspor logger.debug, info, warn, error dengan signature (event, context)."
+  },
+  "apps/api/src/security/auth.ts": {
+    "summary": "JWT HS256 buatan sendiri agar kode keamanan bisa diaudit dalam satu layar: issueToken membuat token berumur 30 hari berisi sub (user id), athleteId, email, iat, exp; verifyToken memverifikasi signature secara constant-time, menolak alg selain HS256, token kedaluwarsa, atau payload tanpa sub dan athleteId. requireAuth adalah middleware Hono yang membaca header Bearer, melempar ApiError 401 bila tidak valid, dan mengisi variabel konteks userId, athleteId, email (tipe AuthVariables). Signing key dari AUTH_JWT_SECRET dengan fallback khusus development."
+  },
+  "apps/api/src/security/crypto.ts": {
+    "summary": "Kriptografi server: encryptSecret dan decryptSecret AES-256-GCM (format iv:tag:ciphertext base64url) untuk token OAuth provider at rest dengan kunci dari TOKEN_ENCRYPTION_KEY (fallback scrypt untuk development); hashPassword dan verifyPassword scrypt N=2^15 dengan salt acak dan perbandingan constant-time; verifyHmacSignature HMAC-SHA256 constant-time untuk webhook WHOOP; generateOAuthState nonce acak 32 byte."
+  },
+  "apps/api/src/providers/types.ts": {
+    "summary": "Abstraksi provider data kebugaran agar sync engine tidak pernah bercabang per layanan: tipe ConnectionStatus, OAuthTokens, SyncWindow (since, until, cursor), NormalizedBodyMeasurement, NormalizedRecovery, NormalizedSleep, ProviderSyncPayload (workouts, recoveries, sleep, bodyMeasurements, nextCursor, warnings) dengan emptyPayload, ProviderCapabilities (serverPull, webhooks, workouts, recovery, sleep, bodyMeasurements, routes), interface FitnessDataProvider (id, displayName, capabilities, scopes, dataDescription, isConfigured, buildAuthorizationUrl, exchangeCode, refreshTokens, revoke, sync), serta kelas error ProviderAuthError dan ProviderRateLimitError."
+  },
+  "apps/api/src/providers/registry.ts": {
+    "summary": "Registry provider: konstanta CONNECTABLE_PROVIDERS (strava, whoop, healthkit) dan isConnectableProvider. Fungsi build memilih MockProvider untuk ketiga id saat USE_MOCK_DATA aktif, selain itu StravaProvider, WhoopProvider, HealthKitProvider. Mengekspor getProvider(id), listProviders(), dan resetProviderRegistry() untuk test."
+  },
+  "apps/api/src/providers/mock/index.ts": {
+    "summary": "Provider mock deterministik untuk development dan test: PRNG mulberry32 di-seed dari hash athlete id; generateSessions membuat 12 minggu sesi lari mengikuti pola mingguan (easy, intervals, threshold, long) dengan deload tiap empat minggu, pace membaik, sebagian sesi tanpa HR dan sebagian dilewati; toStravaWorkout, toWhoopWorkout, toHealthKitWorkout memberi tiga sudut pandang berbeda atas sesi yang sama (WHOOP mulai terlambat dan lebih pendek, HealthKit pembulatan berbeda) agar mesin dedup benar-benar diuji; generateDailyPhysiology membuat sleep, recovery (HRV dan RHR merespons beban kemarin), dan berat badan mingguan. Kelas MockProvider mengimplementasikan FitnessDataProvider dengan callback OAuth lokal, token palsu, dan sync yang memfilter berdasarkan window."
+  },
+  "apps/api/src/providers/strava/api.ts": {
+    "summary": "Konstanta permukaan API Strava (diverifikasi Agustus 2026): URL authorize, mobile authorize, token, revoke baru dan legacy deauthorize (deprecated hingga Juni 2027), API base v3, push_subscriptions; STRAVA_SCOPES (read, activity:read_all, profile:read_all) dan STRAVA_DATA_DESCRIPTION; STRAVA_RUN_SPORT_TYPES; tipe StravaTokenResponse, StravaActivity, StravaWebhookEvent, StravaRateLimitStatus; parseRateLimitHeaders membaca header x-ratelimit-usage dan x-ratelimit-limit; shouldPauseForRateLimit berhenti pada 90% limit jangka pendek atau 95% limit harian."
+  },
+  "apps/api/src/providers/strava/normalize.ts": {
+    "summary": "Normalisasi Strava ke bentuk kanonis, terpisah dari HTTP client agar bisa diuji dengan fixture: toSportType memetakan sport_type ke run, walk, ride, swim, strength, other; inferWorkoutType menebak tipe sesi secara konservatif dari nama aktivitas (race, interval, threshold atau tempo, hill, fartlek, stride, time trial, recovery atau easy, long) dan jarak; toSplits dari splits_metric; decodePolyline decoder polyline Google tanpa dependensi; toProviderWorkout membangun ProviderWorkout (timezone IANA dari string Strava, HR diabaikan bila has_heartrate false, cadence dikali dua untuk lari, route dari polyline); webhookEventKey identitas stabil event webhook."
+  },
+  "apps/api/src/providers/strava/provider.ts": {
+    "summary": "Implementasi StravaProvider (FitnessDataProvider) dengan capabilities serverPull, webhooks, dan routes. buildAuthorizationUrl menyusun URL OAuth dengan scope dan state; exchangeCode dan refreshTokens memanggil endpoint token (400 atau 401 menjadi ProviderAuthError); revoke mencoba /oauth/revoke lalu fallback ke endpoint legacy tanpa pernah memblokir disconnect lokal; sync memaginasi /athlete/activities (100 per halaman, maksimum 10 halaman) dengan parameter after dan before, menangani 401 dan 429, berhenti dini saat mendekati rate limit, dan menyimpan high-water mark sebagai nextCursor; fetchActivity untuk pemrosesan webhook; toTokens memetakan respons token termasuk id atlet Strava."
+  },
+  "apps/api/src/providers/whoop/api.ts": {
+    "summary": "Konstanta API WHOOP v2 yang diambil dari dokumen OpenAPI resmi: URL authorize dan token, API base, WHOOP_ENDPOINTS (cycle, recovery, sleep, workout, profile, body measurement, revoke access), WHOOP_SCOPES termasuk offline agar refresh token diterbitkan, WHOOP_DATA_DESCRIPTION, tipe WhoopScoreState (SCORED, PENDING_SCORE, UNSCORABLE), WhoopPaginated, WhoopCycle, WhoopRecovery, WhoopSleep, WhoopWorkout, WhoopBodyMeasurement, WhoopProfile, WhoopTokenResponse, WhoopWebhookEvent; WHOOP_RUN_SPORT_NAMES; helper webhookObjectKind dan isDeleteEvent."
+  },
+  "apps/api/src/providers/whoop/normalize.ts": {
+    "summary": "Normalisasi WHOOP v2 ke bentuk kanonis yang toleran terhadap objek score yang absen pada PENDING_SCORE atau UNSCORABLE: localDateFromOffset menghitung tanggal lokal dari timezone_offset; toSportType; toProviderWorkout (kalori dari kilojoule, tipe konservatif easy untuk lari); toNormalizedRecovery dikunci pada cycle_id; toNormalizedSleep (total tidur = light + slow wave + REM, tanggal dari waktu bangun); toBodyMeasurements untuk berat, tinggi, dan max HR; webhookEventKey."
+  },
+  "apps/api/src/providers/whoop/provider.ts": {
+    "summary": "Implementasi WhoopProvider: OAuth code exchange dan refresh via form-urlencoded (refresh meminta scope offline lagi), exchangeCode juga mengambil user id profil untuk routing webhook; revoke DELETE /v2/user/access best-effort; sync mengambil koleksi workouts, recoveries, dan sleep dengan paginasi nextToken (25 per halaman, maksimum 10 halaman per koleksi) plus satu snapshot body measurement; fetchById untuk pemrosesan webhook; fetchJson dan fetchCollection menangani 401 (ProviderAuthError), 429 (ProviderRateLimitError), dan 404."
+  },
+  "apps/api/src/providers/healthkit/provider.ts": {
+    "summary": "HealthKitProvider untuk Apple Health yang tidak memiliki API server: capabilities serverPull false; HEALTHKIT_READ_TYPES mendaftar identifier HealthKit yang diminta dan HEALTHKIT_DATA_DESCRIPTION untuk UI izin; metode OAuth melempar HealthKitPullUnsupportedError; revoke no-op karena izin dicabut pengguna di iOS; sync mengembalikan payload kosong dengan warning agar penjadwalan sync untuk semua provider tidak error. Data sebenarnya masuk lewat POST /api/connections/healthkit/ingest dari aplikasi iOS."
+  },
+  "apps/api/src/routes/app.ts": {
+    "summary": "Router utama terautentikasi appRoutes (dimount di /api). Profil: GET /me, PATCH /me (updateAthleteProfileSchema), POST /me/complete-onboarding. GET /dashboard memuat loadAthleteContext, menghitung computeTodayDecision, meng-upsert recovery_states dan coach_decisions, lalu mengembalikan greeting, readiness, todayWorkout (versi yang disesuaikan bila ada), decision, trainingState, weeklyProgress, currentBlock, raceGoal (analyzeRaceGoal), zones, needsCheckIn. POST /check-in meng-upsert check_ins dan mengembalikan readiness serta decision baru; GET /recovery. GET /training-plan mengelompokkan planned_workouts per minggu; POST /training-plan/generate memanggil generateTrainingPlan, mengabaikan plan aktif lama, menyimpan training_plans, training_blocks, planned_workouts. GET /workouts dengan sourceRecords, GET /workouts/:id dengan analisis pasca-lari (computeDecoupling atau decouplingFromSplits, efficiencyFactor, adherence, insight), POST /workouts untuk sesi manual lalu recomputeTrainingLoads. GET /progress menyusun seri mingguan jarak, beban, longest run, HRV, RHR, tidur, berat, tren lewat computeTrend, dan prediksi lomba 5K, 10K, half, marathon. GET dan POST /race-goals (dengan computeRaceReadiness), POST /race-results. GET /reviews/weekly lewat buildWeeklyReview. Coach: GET /coach/context, POST /coach/message (answerCoachQuestion lalu simpan coach_conversations), GET /coach/history.",
+    "sections": [
+      {
+        "symbol": "GET /me, PATCH /me, POST /me/complete-onboarding",
+        "startLine": 76,
+        "endLine": 159,
+        "summary": "Membaca dan memperbarui athlete_profiles (preferensi, marker, availability, constraints) serta menandai onboarding selesai."
+      },
+      {
+        "symbol": "GET /dashboard",
+        "startLine": 165,
+        "endLine": 357,
+        "summary": "Menyusun dashboard harian dari AthleteContext, menyimpan recovery_states dan coach_decisions hari ini; helper greetingFor dan toPlannedDto."
+      },
+      {
+        "symbol": "POST /check-in, GET /recovery",
+        "startLine": 363,
+        "endLine": 444,
+        "summary": "Upsert check-in pagi (energy, soreness, stress, motivation, hasPain) yang langsung menghitung ulang readiness dan keputusan, plus detail recovery beserta riwayat dan tidur."
+      },
+      {
+        "symbol": "GET /training-plan, POST /training-plan/generate",
+        "startLine": 450,
+        "endLine": 644,
+        "summary": "Menampilkan plan aktif per minggu dengan target dan jarak selesai, dan menghasilkan plan baru dari template, race goal, volume terkini, dan fitness."
+      },
+      {
+        "symbol": "GET /workouts, GET /workouts/:id, POST /workouts",
+        "startLine": 650,
+        "endLine": 872,
+        "summary": "Daftar workout kanonis dengan provenance, detail beserta analisis decoupling, efficiency factor, training load dan insight, serta pencatatan workout manual."
+      },
+      {
+        "symbol": "GET /progress",
+        "startLine": 878,
+        "endLine": 1064,
+        "summary": "Seri tren latihan, recovery, dan tubuh dalam window hari tertentu plus prediksi lomba standar dengan confidence."
+      },
+      {
+        "symbol": "GET /race-goals, POST /race-goals, POST /race-results",
+        "startLine": 1070,
+        "endLine": 1183,
+        "summary": "Analisis dan readiness setiap race goal, pembuatan race goal, dan pencatatan hasil lomba sebagai jangkar fitness."
+      },
+      {
+        "symbol": "GET /reviews/weekly",
+        "startLine": 1189,
+        "endLine": 1269,
+        "summary": "Review mingguan deterministik dari sesi selesai vs terjadwal, recovery, tidur, efisiensi, dan distribusi intensitas."
+      },
+      {
+        "symbol": "GET /coach/context, POST /coach/message, GET /coach/history",
+        "startLine": 1275,
+        "endLine": 1332,
+        "summary": "Konteks coach terkurasi, tanya jawab dengan riwayat enam pesan terakhir, dan riwayat percakapan."
+      }
+    ]
+  },
+  "apps/api/src/routes/auth.ts": {
+    "summary": "Router autentikasi authRoutes (dimount di /api/auth). POST /signup memvalidasi signUpSchema, menolak email yang sudah terdaftar dengan pesan generik 409 agar tidak membocorkan keberadaan akun, membuat baris users (hash scrypt) dan athlete_profiles dengan availability, constraints, dan notifications default, menulis audit_logs, lalu mengembalikan JWT. POST /signin memverifikasi password dengan dummy hash saat user tidak ada agar waktu respons konstan, dan mengembalikan token beserta hasCompletedOnboarding."
+  },
+  "apps/api/src/routes/connections.ts": {
+    "summary": "Router koneksi provider connectionRoutes (dimount di /api/connections). State OAuth ditandatangani HMAC lewat signState dan verifyState tanpa penyimpanan server. GET / mendaftar semua provider dengan status, scopes, dataDescription, capabilities, isConfigured, dan lastSync dari sync_jobs. POST /:provider/connect: HealthKit langsung berstatus connected (otorisasi di device), mock mode langsung menukar token dan menyimpannya terenkripsi, selain itu mengembalikan authorizationUrl. POST /:provider/sync memanggil syncProvider (full atau incremental). DELETE /:provider melakukan revoke best-effort, menghapus token, dan opsional deleteProviderData yang hanya menghapus canonical workout bila provider itu satu-satunya sumber. POST /healthkit/ingest menerima batch workouts dan samples dari iOS, meng-upsert healthkit_samples (idempoten pada UUID), membuat kandidat canonical_workouts, body_measurements untuk body_mass, lalu rebuildCanonicalWorkouts dan recomputeTrainingLoads. GET /:provider/callback (publik) memverifikasi state, menukar code, menyimpan koneksi, meng-enqueue full sync, dan merender halaman HTML sederhana. Helper upsertConnection, callbackPage, providerRecordCounts.",
+    "sections": [
+      {
+        "symbol": "signState, verifyState",
+        "startLine": 42,
+        "endLine": 68,
+        "summary": "State OAuth berformat athleteId.provider.nonce.signature yang diverifikasi HMAC constant-time."
+      },
+      {
+        "symbol": "GET /",
+        "startLine": 77,
+        "endLine": 116,
+        "summary": "Daftar koneksi per provider digabung dengan job sync terakhir."
+      },
+      {
+        "symbol": "POST /:provider/connect",
+        "startLine": 119,
+        "endLine": 179,
+        "summary": "Memulai koneksi: HealthKit tanpa OAuth, mock mode langsung tersambung, provider nyata mengembalikan URL otorisasi."
+      },
+      {
+        "symbol": "POST /:provider/sync",
+        "startLine": 182,
+        "endLine": 206,
+        "summary": "Memaksa sync sekarang dan mengembalikan ringkasan hasil."
+      },
+      {
+        "symbol": "DELETE /:provider, deleteProviderData",
+        "startLine": 216,
+        "endLine": 337,
+        "summary": "Disconnect dengan revoke remote, pembersihan token, opsi hapus data per provider, audit log, dan hitung ulang beban."
+      },
+      {
+        "symbol": "POST /healthkit/ingest, mapHealthKitActivity",
+        "startLine": 345,
+        "endLine": 515,
+        "summary": "Ingest batch data HealthKit dari device dan rebuild dedup 90 hari terakhir."
+      },
+      {
+        "symbol": "GET /:provider/callback",
+        "startLine": 521,
+        "endLine": 583,
+        "summary": "Callback OAuth publik yang memverifikasi state, menyimpan token terenkripsi, dan menjadwalkan full sync."
+      },
+      {
+        "symbol": "upsertConnection, callbackPage, providerRecordCounts",
+        "startLine": 585,
+        "endLine": 634,
+        "summary": "Upsert baris provider_connections, halaman HTML hasil OAuth dengan escaping, dan hitung jumlah workout."
+      }
+    ]
+  },
+  "apps/api/src/routes/webhooks.ts": {
+    "summary": "Router webhook publik webhookRoutes (dimount di /api/webhooks) dengan pola terima, validasi, simpan event, ACK cepat, proses belakangan. GET /strava menjawab challenge subscription bila hub.verify_token cocok dengan STRAVA_WEBHOOK_VERIFY_TOKEN. POST /strava menyimpan sync_events (dedup pada event_key, redelivery hanya di-ACK), lalu processStravaEvent mencari provider_connections lewat owner_id, menangani deauthorization (object_type athlete dengan authorized false) dengan menghapus token, dan meng-enqueue sync jenis webhook untuk event activity. POST /whoop memverifikasi HMAC-SHA256 atas timestamp plus raw body dengan WHOOP_WEBHOOK_SECRET, menolak timestamp lebih dari 5 menit, mengembalikan 503 di production tanpa secret, lalu processWhoopEvent meng-enqueue sync."
+  },
+  "apps/api/src/services/athlete-context.ts": {
+    "summary": "Perakitan AthleteContext, satu-satunya tempat membangun gambaran atlet agar dashboard, coach, dan review selalu konsisten. loadAthleteContext memuat 120 hari canonical_workouts (rowToCanonicalWorkout), whoop_recoveries dan whoop_sleep sebagai RecoveryRecord dan SleepRecord, check_ins, body_measurements (max HR fallback estimateMaxHeartRate dari usia), menghitung loadState (computeTrainingLoadState), recovery hari ini (computeRecoveryState dengan baseline HRV dan RHR serta estimateSleepNeed), recovery_states historis, fitness (estimateFitness dari race_results dan sesi race atau time_trial), zona HR (selectHeartRateMethodology dan computeHeartRateZones), tren efisiensi aerobik, jarak mingguan 12 minggu, tanggal hard session terbaru, hari energi rendah berturut-turut, trainingState (assessTrainingState), plan aktif (loadPlan: blocks, sesi minggu ini, upcoming, todayWorkout), dan race goal berikutnya. Export tambahan: computeWeeklyDistances, predictForDistance (predictRace), weeklyIntensityDistribution, currentWeekSummary (buildWeeklySummary).",
+    "sections": [
+      {
+        "symbol": "AthleteContext",
+        "startLine": 65,
+        "endLine": 103,
+        "summary": "Bentuk konteks atlet: profil, timezone, today, workouts, recovery dan sleep, check-in, state, fitness, zona, marker, plan, race berikutnya, jarak mingguan."
+      },
+      {
+        "symbol": "loadAthleteContext",
+        "startLine": 107,
+        "endLine": 419,
+        "summary": "Memuat semua data dari database dan menjalankan engine core untuk menghasilkan konteks lengkap."
+      },
+      {
+        "symbol": "computeLoadState, toDailySeriesLocal",
+        "startLine": 421,
+        "endLine": 459,
+        "summary": "Mengubah trainingLoad per workout menjadi seri harian dan state beban."
+      },
+      {
+        "symbol": "computeWeeklyDistances",
+        "startLine": 462,
+        "endLine": 480,
+        "summary": "Total jarak per minggu (Senin) untuk N minggu terakhir, urut dari yang terlama."
+      },
+      {
+        "symbol": "loadPlan",
+        "startLine": 482,
+        "endLine": 531,
+        "summary": "Memuat plan aktif, blok, sesi minggu ini, 14 sesi mendatang, dan sesi hari ini."
+      },
+      {
+        "symbol": "predictForDistance",
+        "startLine": 534,
+        "endLine": 546,
+        "summary": "Prediksi lomba untuk jarak tertentu dari fitness dan performa terbaik terbaru."
+      },
+      {
+        "symbol": "weeklyIntensityDistribution, currentWeekSummary",
+        "startLine": 549,
+        "endLine": 592,
+        "summary": "Distribusi intensitas minggu berjalan dan ringkasan minggu berjalan dari sesi selesai vs terjadwal."
+      }
+    ]
+  },
+  "apps/api/src/services/coach.ts": {
+    "summary": "Layanan AI coach dengan dua aturan keras: LLM tidak pernah memutuskan latihan (decideToday dari @running/core yang memutuskan) dan tidak pernah diberi database (hanya CoachContext terkurasi). buildCoachContext meringkas atlet, readiness, trainingState, todayWorkout, 10 workout terakhir, weekSoFar, recovery, fitness, efisiensi aerobik, training load, current block, race goal, dan daftar missingData. computeTodayDecision memanggil decideToday dengan planned workout hari ini, recovery, state, load, check-in, hard session terbaru, dan daysUntilRace. answerCoachQuestion memanggil Anthropic Messages API (AI_BASE_URL, AI_MODEL, timeout 30 detik) dengan SYSTEM_PROMPT bergaya grounding, kejujuran epistemik, dan batas medis, lalu fallback ke deterministicAnswer yang menjawab pola pertanyaan umum (kenapa sesi diubah, apakah makin cepat, boleh tambah beban, kenapa lelah, lomba, minggu ini) dari konteks yang sama dan menandai generatedWithoutLlm. Mengembalikan CoachResponseDto dengan confidence, dataUsed, dan warnings.",
+    "sections": [
+      {
+        "symbol": "CoachContext, buildCoachContext",
+        "startLine": 40,
+        "endLine": 228,
+        "summary": "Bentuk konteks terkurasi untuk model dan fungsi yang membangunnya dari AthleteContext."
+      },
+      {
+        "symbol": "currentBlockFor, buildRaceContext, describeLoad",
+        "startLine": 230,
+        "endLine": 284,
+        "summary": "Helper blok berjalan, konteks lomba (target, estimasi, gap), dan interpretasi ACWR."
+      },
+      {
+        "symbol": "computeTodayDecision",
+        "startLine": 290,
+        "endLine": 336,
+        "summary": "Menjalankan mesin keputusan deterministik untuk hari ini."
+      },
+      {
+        "symbol": "SYSTEM_PROMPT, answerCoachQuestion",
+        "startLine": 342,
+        "endLine": 451,
+        "summary": "Prompt sistem dan pemanggilan LLM dengan fallback deterministik saat tidak dikonfigurasi atau gagal."
+      },
+      {
+        "symbol": "deterministicAnswer",
+        "startLine": 478,
+        "endLine": 615,
+        "summary": "Responder berbasis pola regex yang menjawab dari CoachContext tanpa model bahasa."
+      }
+    ]
+  },
+  "apps/api/src/sync/engine.ts": {
+    "summary": "Mesin sync idempoten. ensureValidTokens mendekripsi token koneksi dan me-refresh lebih awal bila hampir kedaluwarsa (status expired atau error bila gagal). syncProvider menjalankan satu pass untuk provider (full 365 hari atau incremental dengan overlap 48 jam), memanggil provider.sync, persistPayload, memperbarui provider_connections (lastSyncedAt, lastSyncError, syncCursor), lalu rebuildCanonicalWorkouts dan recomputeTrainingLoads; mengembalikan SyncOutcome. persistPayload meng-upsert whoop_recoveries, whoop_sleep, body_measurements, dan workout provider lewat upsertProviderWorkout (membuat canonical_workouts plus workout_sources bila belum ada). rebuildCanonicalWorkouts merehidrasi baris sebagai ProviderWorkout, memakai clusterWorkouts dan mergeCluster dari core, menulis hasil merge ke baris tertua, memindahkan workout_sources, dan menghapus duplikat. recomputeTrainingLoads menghitung computeSessionLoad per workout 120 hari terakhir dan menyimpan state harian ke training_loads. rowToCanonicalWorkout memetakan baris ke tipe domain. Antrean: backoffDelayMs, MAX_SYNC_ATTEMPTS, enqueueSync ke sync_jobs, processQueuedJobs worker dengan retry eksponensial, recentSyncJobs.",
+    "sections": [
+      {
+        "symbol": "ensureValidTokens",
+        "startLine": 75,
+        "endLine": 142,
+        "summary": "Dekripsi token, refresh lima menit sebelum kedaluwarsa, dan penandaan status koneksi saat refresh gagal."
+      },
+      {
+        "symbol": "syncProvider",
+        "startLine": 149,
+        "endLine": 297,
+        "summary": "Satu pass sync lengkap dengan penanganan rate limit, auth error, persist, rebuild, dan hitung ulang beban."
+      },
+      {
+        "symbol": "persistPayload",
+        "startLine": 306,
+        "endLine": 414,
+        "summary": "Upsert recovery, sleep, body measurement, dan workout dari payload provider; dipakai juga oleh seed."
+      },
+      {
+        "symbol": "upsertProviderWorkout",
+        "startLine": 423,
+        "endLine": 484,
+        "summary": "Menyimpan workout provider sebagai canonical workout bersumber tunggal bila (provider, externalId) belum ada."
+      },
+      {
+        "symbol": "rebuildCanonicalWorkouts",
+        "startLine": 493,
+        "endLine": 628,
+        "summary": "Re-cluster dan re-merge workout dalam rentang tanggal, mempertahankan id tertua dan menghapus duplikat."
+      },
+      {
+        "symbol": "recomputeTrainingLoads",
+        "startLine": 635,
+        "endLine": 709,
+        "summary": "Hitung beban per sesi dan state rolling harian, disimpan ke canonical_workouts dan training_loads."
+      },
+      {
+        "symbol": "rowToCanonicalWorkout",
+        "startLine": 712,
+        "endLine": 747,
+        "summary": "Pemetaan baris canonical_workouts ke CanonicalWorkout domain."
+      },
+      {
+        "symbol": "backoffDelayMs, enqueueSync, processQueuedJobs, recentSyncJobs",
+        "startLine": 754,
+        "endLine": 865,
+        "summary": "Antrean sync_jobs in-process dengan backoff eksponensial dan maksimum lima percobaan."
+      }
+    ]
+  },
+  "apps/api/src/seed/index.ts": {
+    "summary": "Seed development yang menjalankan pipeline nyata alih-alih menyisipkan baris jadi: membuat user dan athlete_profiles contoh (timezone Asia/Jakarta, marker HR, background, availability, constraints, notifications), race_results 5K sebagai jangkar fitness, race_goals 10K, koneksi strava, whoop, dan healthkit, sync lewat provider mock (provider.sync lalu persistPayload), rebuildCanonicalWorkouts dan recomputeTrainingLoads, 14 hari check_ins dengan ritme mingguan, lalu generateTrainingPlan template road_10k dan menyimpan training_plans, training_blocks, planned_workouts. Mengembalikan SeedResult (userId, athleteId, planId, workoutCount); saat dijalankan langsung lewat pnpm db:seed, mencetak kredensial akun seed ke stdout."
+  },
+  "apps/api/src/app.test.ts": {
+    "summary": "Test end-to-end API dengan vitest terhadap PGlite in-memory dan migrasi nyata: health; autentikasi (401 tanpa token, token palsu, signup, password lemah, tidak membocorkan email terdaftar, signin, password salah); profil (GET dan PATCH /api/me, validasi); alur MVP penuh (daftar koneksi, connect dan sync Strava, WHOOP, HealthKit mock, dedup tiga provider menjadi satu riwayat dengan sourceRecords, idempotensi re-sync, provenance, race goal, race result, generate plan, plan per minggu, check-in, dashboard, nyeri memicu REST dengan rujukan profesional, log workout manual, analisis workout, progress dengan confidence, prediksi maraton tidak lebih yakin dari 10K, recovery, weekly review); AI coach tanpa LLM (generatedWithoutLlm, konteks terbatas tanpa kredensial, riwayat); disconnect dengan hapus data tetap mempertahankan workout terkorroborasi; webhook Strava (challenge, verify token salah, ACK cepat, redelivery, body rusak) dan WHOOP tanpa signature (401); serta penanganan error (401 untuk path tak dikenal tanpa token, 404 bersih, tanpa stack trace)."
+  },
+  "apps/mobile/package.json": {
+    "summary": "Manifest @running/mobile: aplikasi Expo 57 dengan React 19.2 dan React Native 0.86, expo-router sebagai entry, expo-secure-store, expo-web-browser, expo-constants, expo-linking, react-native-svg, async-storage, gesture-handler, reanimated, safe-area-context, screens, serta workspace @running/core, @running/contracts, @running/health-kit. Script start, ios, android, web, prebuild, typecheck, test (passWithNoTests), doctor."
+  },
+  "apps/mobile/tsconfig.json": {
+    "summary": "Konfigurasi TypeScript app mobile: extends expo/tsconfig.base dengan strict, noUncheckedIndexedAccess, noUnusedLocals dan noUnusedParameters, noImplicitOverride, jsx react-jsx, moduleResolution bundler, alias @/* ke src/*, include semua ts dan tsx serta tipe Expo."
+  },
+  "apps/mobile/app.json": {
+    "summary": "Konfigurasi Expo untuk app Running OS: slug running-os, scheme runningos untuk deep link kembali dari OAuth, orientasi portrait, tema otomatis, newArchEnabled, iOS bundleIdentifier dan Android package com.runningos.app, plugin expo-router, expo-secure-store, dan @running/health-kit dengan teks izin healthSharePermission, experiments typedRoutes, dan extra.apiUrl default ke localhost port 4000."
+  },
+  "apps/mobile/metro.config.js": {
+    "summary": "Konfigurasi Metro untuk monorepo pnpm: watchFolders ke root workspace agar perubahan packages/* memicu reload, nodeModulesPaths app dan root, hierarchical lookup tetap aktif untuk layout symlink pnpm, dan resolveRequest kustom yang menulis ulang specifier relatif berakhiran .js ke file .ts, .tsx, .mts, atau .cts yang ada di disk sehingga package bersama tetap memakai import ESM yang benar."
+  },
+  "apps/mobile/app/_layout.tsx": {
+    "summary": "Root layout Expo Router: membungkus app dengan GestureHandlerRootView, SafeAreaProvider, ThemeProvider, dan SessionProvider. RootNavigator memakai Stack.Protected berdasarkan status sesi dari useSession: loading menampilkan LoadingState; signed_out hanya membuka sign-in; signed_in tanpa onboarding hanya membuka onboarding; signed_in lengkap membuka (tabs), connections, workout/[id], dan modal why."
+  },
+  "apps/mobile/app/(tabs)/_layout.tsx": {
+    "summary": "Layout tab bawah dengan lima tujuan yang memetakan lima pertanyaan produk: index (Home, apa sekarang), plan (apa berikutnya), train (lakukan), progress (apakah membaik), coach (mengapa). Ikon berupa glyph teks tanpa paket ikon; warna dari useTheme."
+  },
+  "apps/mobile/app/(tabs)/index.tsx": {
+    "summary": "Layar Home yang menjawab apa yang harus dilakukan hari ini. Memuat api.dashboard lewat useQuery, menampilkan greeting dan indikator offline saat data dari cache, ReadinessRing dengan ringkasan dan chip data terbatas, prompt check-in pagi yang membuka CheckInSheet bila needsCheckIn, kartu sesi hari ini (jarak, waktu, RPE, chip Adjusted, tombol Start workout ke /train atau EmptyState ke /plan), CoachMessage dengan tombol Why yang membuka modal /why berisi explanation, kartu rujukan profesional bila recommendProfessionalReview, progres minggu ini dengan ProgressBar dan blok berjalan, MetricCard status latihan, kartu race goal (target, proyeksi, gap, confidence) menuju /progress, dan tombol ke /connections."
+  },
+  "apps/mobile/app/(tabs)/coach.tsx": {
+    "summary": "Layar Coach: percakapan yang selalu berpijak pada data atlet sendiri. Memuat riwayat lewat api.coachHistory, menampilkan saran pertanyaan awal saat kosong, mengirim pesan lewat api.coachMessage, dan merender balasan dengan keyMetrics, recommendation, chip dataUsed sebagai provenance, peringatan data yang hilang, serta catatan jujur bila generatedWithoutLlm (dijawab langsung dari data tanpa model AI). Input teks dengan KeyboardAvoidingView dan auto scroll."
+  },
+  "apps/mobile/app/(tabs)/plan.tsx": {
+    "summary": "Layar Plan: memuat api.plan. Bila belum ada plan, menampilkan pemilih template (beginner_5k, improve_5k, road_10k, half_marathon, marathon, aerobic_base, return_to_running, general_fitness) dan tombol Build my plan yang memanggil api.generatePlan dengan race goal pertama dari api.raceGoals. Bila ada plan: kartu blok berjalan beserta tujuannya, catatan generationBasis tentang bagaimana plan dibuat, lalu daftar minggu dengan ProgressBar jarak selesai vs target dan setiap sesi (label hari, judul, jarak, StatusChip Done, Adjusted, Skipped, Partial)."
+  },
+  "apps/mobile/app/(tabs)/progress.tsx": {
+    "summary": "Layar Progress yang menjawab apakah atlet benar-benar makin fit: pemilih window 4, 8, atau 12 minggu, memuat api.progress. Bagian Fitness (estimated VO2max dengan basis, threshold pace, easy pace range, TrendRow efisiensi aerobik dengan ringkasan), Training (Sparkline jarak mingguan dan tren volume), Recovery (Sparkline readiness, tren HRV dan resting HR), Body (berat dan tren), dan Race predictions per jarak dengan pace dan confidence. Setiap proyeksi diberi label estimasi."
+  },
+  "apps/mobile/app/(tabs)/train.tsx": {
+    "summary": "Layar Train: pemutar sesi terstruktur untuk todayWorkout dari api.dashboard. flattenStructure mengubah warmup, main (step dan repeat), dan cooldown menjadi daftar langkah linear dengan label repetisi; timer per detik dengan auto-advance saat langkah berdurasi selesai; tombol Start atau Resume, Pause, Next step, dan Finish and log yang memanggil api.logWorkout lalu me-refresh dashboard. Secara sengaja tidak menampilkan pace, jarak, atau HR live karena diimpor dari Strava atau HealthKit setelah lari. Menampilkan daftar langkah sesi dan zona HR referensi sesuai metodologi atlet."
+  },
+  "apps/mobile/app/connections.tsx": {
+    "summary": "Layar Connected data: memuat api.connections dan menampilkan setiap provider dengan StatusDot, waktu sync relatif, error terakhir, deskripsi data yang dibaca, dan peringatan bila belum dikonfigurasi di server. connect: HealthKit lewat requestAuthorization native lalu importHealthKit (collectForIngest 365 hari ke api.ingestHealthKit), provider lain lewat api.connect lalu membuka OAuth di system browser dengan WebBrowser.openAuthSessionAsync dan scheme runningos. sync memanggil api.sync full atau mengimpor ulang HealthKit; disconnect menampilkan Alert dengan pilihan hanya putus atau putus dan hapus data (api.disconnect deleteData) beserta penjelasan bahwa workout yang juga direkam layanan lain tetap disimpan."
+  },
+  "apps/mobile/app/onboarding.tsx": {
+    "summary": "Alur onboarding lima langkah: goal (pilih template program), fitness (waktu lomba terbaru untuk 5K, 10K, atau Half dan jarak mingguan saat ini), availability (hari lari dan hari long run), connect (opsional menuju /connections), dan summary. finish memanggil api.updateMe (availability dan background), api.createRaceResult bila waktu valid lewat parseDuration, api.generatePlan, lalu membaca api.progress dan api.plan untuk menampilkan titik awal (estimated VO2max, easy pace, proyeksi finish, blok pertama, target minggu satu). complete memanggil api.completeOnboarding, markOnboarded dari useSession, dan navigasi ke Home."
+  },
+  "apps/mobile/app/sign-in.tsx": {
+    "summary": "Layar masuk dan daftar: mode sign_in atau sign_up dengan input nama (hanya saat daftar), email, dan password (secureTextEntry dan textContentType agar password manager OS membantu), memanggil signIn atau signUp dari useSession, menampilkan pesan error dari API, dan catatan privasi bahwa data kesehatan dienkripsi serta bisa diputus dan dihapus."
+  },
+  "apps/mobile/app/why.tsx": {
+    "summary": "Modal Why: menampilkan judul dan explanation dari parameter route (dihasilkan mesin keputusan deterministik, sama dengan atau tanpa LLM) ditambah kartu yang menjelaskan bahwa rekomendasi dihitung engine deterministik dari recovery, beban, dan plan, bukan oleh model bahasa."
+  },
+  "apps/mobile/app/workout/[id].tsx": {
+    "summary": "Layar detail workout dan analisis pasca-lari: memuat api.workout(id), menampilkan tanggal, nama atau tipe, jarak, waktu, pace, dan HR rata-rata; bagian Analysis berisi insight, heart-rate drift dengan interpretasi atau alasan tidak valid, dan training load beserta nama modelnya (TRIMP, zona HR, sRPE, atau estimasi durasi); bagian provenance mendaftar setiap sourceRecords (Strava, WHOOP, Apple Health, entri manual) dan field yang disumbangkan, dengan catatan bahwa lari yang dilihat beberapa layanan tetap dihitung sekali."
+  },
+  "apps/mobile/src/components/check-in.tsx": {
+    "summary": "CheckInSheet, modal check-in pagi yang dirancang selesai dalam belasan detik: empat skala 1 sampai 5 lewat komponen Scale (energy, soreness, stress, motivation, semua disimpan higher is better dengan label anchor) dan pertanyaan nyeri ya atau tidak yang menjadi sinyal pengesampingan di mesin coaching, submit ke api.checkIn lalu onSubmitted; tombol skip. Target sentuh besar dan label aksesibilitas radio."
+  },
+  "apps/mobile/src/components/metrics.tsx": {
+    "summary": "Komponen tampilan domain: ReadinessRing (lingkaran SVG skor readiness dengan warna band dan label aksesibilitas), MetricCard (label, nilai, unit, detail, tone), TrendRow (arah tren dengan panah dan chip confidence yang wajib), Sparkline (grafik garis minimal dengan react-native-svg), ProgressBar (nilai vs target), ZoneBar (distribusi zona), CoachMessage (pesan coach dengan tombol Why yang mewajibkan explanation), dan StatusDot (status koneksi provider)."
+  },
+  "apps/mobile/src/components/primitives.tsx": {
+    "summary": "Primitif design system yang sadar aksesibilitas: Type (varian tipografi, tone warna, batas skala font), Screen (ScrollView dengan refreshControl atau View statis), Card (opsional pressable), Stack (flex row atau column dengan gap), Divider, SectionHeader (judul overline dan aksi), Button (primary, secondary, ghost, danger, loading, tinggi minimum 48), Chip (tone dan selected), EmptyState, ErrorState (pesan dari envelope error API), dan LoadingState."
+  },
+  "apps/mobile/src/design/theme.tsx": {
+    "summary": "ThemeProvider memilih lightTheme atau darkTheme dari useColorScheme dan menyediakannya lewat useTheme; typeStyle mengubah varian tipografi menjadi TextStyle dan menambahkan fontVariant tabular-nums untuk varian metric agar angka yang berubah tidak menggeser layout."
+  },
+  "apps/mobile/src/design/tokens.ts": {
+    "summary": "Token desain bergaya instrumen performa: palette netral cool-shifted, warna status desaturasi (green, amber, red), dan satu accent biru; tipe Theme serta darkTheme dan lightTheme (background, surface, surfaceRaised, border, text, accent, positive, caution, negative, ramp warna zones); spacing skala 4pt, radius, typography (display, metricLarge, metricMedium, metricSmall, title, heading, body, bodyStrong, caption, overline), elevation kartu, dan durasi motion."
+  },
+  "apps/mobile/src/lib/api.ts": {
+    "summary": "Klien API offline-first untuk app mobile. resolveBaseUrl dari EXPO_PUBLIC_API_URL, expoConfig.extra.apiUrl, atau default localhost (10.0.2.2 untuk emulator Android); kelas ApiRequestError dan OfflineError; penyimpanan token di SecureStore (AsyncStorage di web) lewat saveToken, loadToken, clearToken; cache respons GET di AsyncStorage (readCache, writeCache, clearCache) sebagai fallback saat jaringan gagal; fungsi request generik dengan bearer token, timeout, dan pass-through pesan error API. Objek api memetakan endpoint: signUp, signIn, me, updateMe, completeOnboarding, dashboard, checkIn, recovery, plan, generatePlan, workouts, workout, logWorkout, progress, raceGoals, createRaceGoal, createRaceResult, weeklyReview, connections, connect, sync, disconnect, ingestHealthKit, coachMessage, coachHistory. Mendefinisikan tipe respons AthleteProfileResponse, PlannedWorkout, WorkoutStructure, WorkoutStep, DashboardResponse, CheckInResponse, RecoveryResponse, PlanResponse, WorkoutSummary, WorkoutDetail, TrendDto, ProgressResponse, RaceGoal, WeeklyReview, Connection, SyncResult, CoachResponse, CoachHistoryMessage.",
+    "sections": [
+      {
+        "symbol": "resolveBaseUrl, ApiRequestError, OfflineError",
+        "startLine": 30,
+        "endLine": 60,
+        "summary": "Resolusi base URL dan kelas error klien."
+      },
+      {
+        "symbol": "saveToken, loadToken, clearToken",
+        "startLine": 71,
+        "endLine": 97,
+        "summary": "Penyimpanan token auth di Keychain atau Keystore, fallback AsyncStorage di web."
+      },
+      {
+        "symbol": "readCache, writeCache, clearCache",
+        "startLine": 103,
+        "endLine": 133,
+        "summary": "Cache respons per key di AsyncStorage dan pembersihan saat sign-out."
+      },
+      {
+        "symbol": "request",
+        "startLine": 139,
+        "endLine": 196,
+        "summary": "Wrapper fetch dengan header auth, timeout, envelope error API, dan fallback cache pada kegagalan jaringan."
+      },
+      {
+        "symbol": "api",
+        "startLine": 202,
+        "endLine": 314,
+        "summary": "Peta endpoint bertipe ke route /api backend dengan cacheKey dan timeout khusus."
+      },
+      {
+        "symbol": "response shapes",
+        "startLine": 320,
+        "endLine": 615,
+        "summary": "Interface TypeScript untuk seluruh respons API yang dipakai layar."
+      }
+    ]
+  },
+  "apps/mobile/src/lib/session.tsx": {
+    "summary": "SessionProvider dan useSession: status loading, signed_out, atau signed_in, memuat token tersimpan dan memverifikasinya lewat api.me (token usang dibersihkan tanpa layar error), signIn dan signUp menyimpan token dan status onboarding, signOut menghapus token dan seluruh cache agar data kesehatan tidak tersisa, markOnboarded. Hook useQuery generik (data, error, loading, stale bila dari cache, refresh) tanpa library query eksternal."
+  },
+  "modules/health-kit/package.json": {
+    "summary": "Manifest @running/health-kit: bridge HealthKit native iOS dengan config plugin Expo; exports src/index.ts dan ./app.plugin.js; peerDependencies expo dan react-native; script typecheck dan test (passWithNoTests)."
+  },
+  "modules/health-kit/tsconfig.json": {
+    "summary": "Konfigurasi TypeScript modul health-kit: extends tsconfig.base dengan jsx react-jsx, lib ES2022 dan DOM, noEmit, tanpa types global, include src."
+  },
+  "modules/health-kit/expo-module.config.json": {
+    "summary": "Konfigurasi Expo Modules untuk modul native: platform ios saja dan mendaftarkan kelas RunningHealthKitModule."
+  },
+  "modules/health-kit/app.plugin.js": {
+    "summary": "Re-export plugin/withHealthKit.js dari root package agar Expo dapat me-resolve config plugin lewat nama package @running/health-kit di app.json."
+  },
+  "modules/health-kit/ios/RunningHealthKit.podspec": {
+    "summary": "Podspec CocoaPods RunningHealthKit versi 0.1.0: iOS 15.1 ke atas, static framework, dependency ExpoModulesCore, link framework sistem HealthKit, DEFINES_MODULE dan whole-module Swift compilation, source semua file Swift dan Objective-C di folder ios."
+  },
+  "modules/health-kit/ios/RunningHealthKitModule.swift": {
+    "summary": "Modul Expo native RunningHealthKit (Swift) untuk membaca HealthKit di device. Fungsi isAvailable; requestAuthorization yang hanya melaporkan bahwa sheet izin selesai karena iOS tidak mengungkap izin baca; authorizationStatusForSharing; getWorkouts (HKSampleQuery workout diperkaya distance, energy, HR rata-rata dan maksimum dari statistics pada iOS 16+); getHeartRateSamples; getQuantitySamples untuk identifier heart_rate, resting_heart_rate, hrv, body_mass, height, vo2_max, active_energy, step_count, distance, dan metrik lari running_speed, running_power, stride_length, vertical_oscillation, ground_contact_time dengan guard iOS 16; getWorkoutRoute (HKWorkoutRouteQuery ke koordinat); getSleepSamples dengan tahap tidur. Semua kegagalan baca menghasilkan hasil kosong, bukan error. Helper serialize workout, readTypes, quantityType, preferredUnit dengan unit kanonis, format dan parse ISO 8601, sleepStage, activityName.",
+    "sections": [
+      {
+        "symbol": "RunningMetric",
+        "startLine": 29,
+        "endLine": 50,
+        "summary": "Tipe metrik lari iOS 16+ yang dijaga per item agar OS lama hanya melaporkan lebih sedikit metrik."
+      },
+      {
+        "symbol": "RunningHealthKitModule.definition",
+        "startLine": 52,
+        "endLine": 343,
+        "summary": "Definisi modul Expo dan seluruh fungsi yang diekspos ke JavaScript."
+      },
+      {
+        "symbol": "serialize(workout:)",
+        "startLine": 348,
+        "endLine": 394,
+        "summary": "Mengubah HKWorkout menjadi payload untuk endpoint ingest, termasuk flag indoor."
+      },
+      {
+        "symbol": "readTypes, quantityType, preferredUnit",
+        "startLine": 400,
+        "endLine": 495,
+        "summary": "Daftar tipe yang diminta, pemetaan identifier string ke HKQuantityType, dan unit kanonis."
+      },
+      {
+        "symbol": "helpers",
+        "startLine": 499,
+        "endLine": 547,
+        "summary": "Formatter ISO, pemetaan tahap tidur, dan nama aktivitas."
+      }
+    ]
+  },
+  "modules/health-kit/plugin/withHealthKit.js": {
+    "summary": "Config plugin Expo withHealthKit yang dijalankan saat prebuild: menambahkan entitlement com.apple.developer.healthkit (opsional akses background delivery), NSHealthShareUsageDescription di Info.plist (tanpa ini iOS langsung menghentikan app saat meminta izin), capability device healthkit agar App Store menyaring perangkat yang tidak kompatibel, dan UIBackgroundModes processing bila diminta. Tidak mendeklarasikan izin tulis karena app tidak menulis ke HealthKit. Dibungkus createRunOncePlugin."
+  },
+  "modules/health-kit/src/index.ts": {
+    "summary": "Permukaan TypeScript lintas platform untuk modul native RunningHealthKit lewat requireOptionalNativeModule: tipe HealthKitWorkout, HealthKitSample, HealthKitRoutePoint, AuthorizationResult, QuantityIdentifier; fungsi isHealthKitAvailable, requestAuthorization, getWorkouts, getHeartRateSamples, getQuantitySamples, getWorkoutRoute, getSleepSamples yang mengembalikan hasil kosong di Android, web, atau build tanpa modul; collectForIngest membaca workouts, body_mass, resting heart rate, HRV, VO2max, dan sleep sekaligus untuk endpoint ingest; HEALTHKIT_PERMISSION_PURPOSES berisi deskripsi tujuan tiap izin untuk ditampilkan ke atlet."
+  },
+  "docs/ARCHITECTURE.md": {
+    "summary": "Dokumen arsitektur: diagram lapisan (apps/mobile Expo, apps/api Hono dengan providers strava, whoop, healthkit, manual, mock, PostgreSQL atau PGlite, packages/core murni, modules/health-kit), layering domain, application, infrastructure, presentation, keputusan kunci (PGlite untuk development, idempotensi di database, dedup berbobot bukan aturan tunggal, satu batas autentikasi di app.ts, LLM tidak pernah memutuskan), extension points (provider baru, cuaca, route, Apple Watch, olahraga lain), dan known gaps (Train tanpa GPS atau HR live, modul HealthKit belum dikompilasi, antrean in-process, tanpa RLS, tipe workout Strava heuristik, notifikasi belum dikirim)."
+  },
+  "docs/COACHING_ENGINE.md": {
+    "summary": "Dokumentasi setiap rumus mesin coaching dan batasannya: model training load (trimp_hr, hr_zone, srpe, duration) dengan TRIMP Banister dan koefisien per jenis kelamin, ACWR yang sengaja di-de-emphasis, monotony dan strain Foster; estimasi fitness Riegel dan VDOT Daniels-Gilbert dengan gating, pembobotan recency dan sumber, serta tabel confidence; metodologi zona (max_hr_percent, hr_reserve, threshold_hr, pace) dan Tanaka untuk max HR; efficiency factor dan aerobic decoupling dengan gate validitas; komponen recovery komposit beserta bobot dan band; hierarki dan tabel skor decision engine; prinsip plan generation; tabel training state; dan prinsip confidence di semua estimasi."
+  },
+  "docs/DATA_MODEL.md": {
+    "summary": "Dokumentasi data model PostgreSQL: konvensi (timestamptz UTC, date lokal atlet, payload raw disimpan, unique constraint untuk idempotensi), tabel identitas, provider_connections dengan token terenkripsi dan sync_cursor, tabel raw provider dengan unique (connection_id, external_id), canonical_workouts dan workout_sources (PK gabungan dan unique provider plus external_id), planning, derived daily state unik per (athlete_id, date), coach_memory dengan jenis stated_preference, observed_pattern, temporary_condition, operasional (sync_jobs, sync_events, audit_logs), kebijakan deletion per provider, catatan RLS belum aktif beserta contoh policy, dan perintah migrasi drizzle-kit."
+  },
+  "docs/ENVIRONMENT.md": {
+    "summary": "Dokumentasi environment: batas secret backend-only (client secret Strava dan WHOOP, DATABASE_URL, AUTH_JWT_SECRET, TOKEN_ENCRYPTION_KEY, AI_API_KEY, webhook secret) versus variabel EXPO_PUBLIC_ yang tertanam di binary app, cara membuat secret dengan openssl, penolakan default tidak aman di production oleh loadEnv, tabel development vs production, redaksi logger, dan checklist deployment."
+  },
+  "docs/INTEGRATIONS.md": {
+    "summary": "Panduan integrasi provider: mock mode; Strava (setup aplikasi, endpoint authorize, token, revoke, dan perubahan endpoint deauthorization 2026 ke 2027, scopes read, activity:read_all, profile:read_all, registrasi webhook push_subscriptions dan challenge, rate limit dari header); WHOOP v2 (setup, endpoint dari snapshot OpenAPI, scopes termasuk offline, perbedaan v1 ke v2 seperti id UUID dan score_state, verifikasi HMAC webhook); Apple Health atau HealthKit (tanpa API server, ingest dari iOS, prebuild dan config plugin, izin baca tidak bisa diintrospeksi, tipe yang dibaca); serta langkah menambah provider baru lewat FitnessDataProvider dan registry."
+  },
+  "docs/whoop-openapi-v2.snapshot.json": {
+    "summary": "Snapshot dokumen OpenAPI resmi WHOOP API (server api.prod.whoop.com/developer) yang menjadi sumber kebenaran untuk apps/api/src/providers/whoop/api.ts: path v2 cycle, recovery, sleep, workout, user profile, body measurement, dan access, activity mapping v1, serta endpoint partner; skema Cycle, CycleScore, Recovery, RecoveryScore, Sleep, SleepScore, SleepStageSummary, SleepNeeded, WorkoutV2, WorkoutScore, ZoneDurations, UserBodyMeasurement, UserBasicProfile, dan respons paginasi; security scheme OAuth2 authorization code dengan daftar scope. Disimpan agar model dapat di-diff terhadap versi berikutnya."
+  },
+  "packages/contracts/package.json": {
+    "summary": "Manifest @running/contracts: skema Zod dan tipe DTO yang dibagi antara app mobile dan API; dependency zod 4; script typecheck, test (passWithNoTests), dan build lewat tsconfig.build.json; exports src/index.ts."
+  },
+  "packages/contracts/tsconfig.json": {
+    "summary": "Konfigurasi TypeScript packages/contracts: extends tsconfig.base.json, rootDir src, outDir dist, noEmit untuk typecheck, include src/**."
+  },
+  "packages/contracts/tsconfig.build.json": {
+    "summary": "Konfigurasi build packages/contracts: extends tsconfig.json dengan noEmit false agar menghasilkan output, exclude file test dan __fixtures__."
+  },
+  "packages/contracts/src/index.ts": {
+    "summary": "Kontrak wire antara app mobile dan API sebagai skema Zod (sumber kebenaran tunggal) beserta tipe turunannya. Primitif: isoDateTime, localDate, providerIdSchema, confidenceSchema, workoutTypeSchema, sportTypeSchema, decisionTypeSchema, trainingStateSchema, recoveryBandSchema. Atlet: availabilitySchema, constraintsSchema, backgroundSchema, preferencesSchema, athleteProfileSchema, updateAthleteProfileSchema. Workout: workoutSourceRefSchema, workoutSummarySchema, workoutAnalysisSchema, workoutDetailSchema, createManualWorkoutSchema. Plan: intensityTargetSchema, workoutStepSchema, workoutStructureSchema, plannedWorkoutSchema, trainingBlockSchema, trainingPlanSchema, planWeekSchema, generatePlanSchema. Recovery: checkInSchema, recoveryStateSchema. Coaching: reasonSchema, coachDecisionSchema. dashboardSchema. Progress: trendSchema, seriesPointSchema, progressSchema. Koneksi: connectionStatusSchema, connectionSchema, syncResultSchema. AI coach: coachMessageSchema, claimKindSchema, coachResponseSchema. Race: createRaceGoalSchema, raceGoalSchema. weeklyReviewSchema. Auth: signUpSchema (password minimal 10 karakter), signInSchema, authResponseSchema. Error: apiErrorSchema dan konstanta API_ERROR_CODES (unauthorized, forbidden, not_found, validation_failed, provider_unavailable, provider_not_connected, token_expired, rate_limited, conflict, internal_error).",
+    "sections": [
+      {
+        "symbol": "primitives",
+        "startLine": 17,
+        "endLine": 73,
+        "summary": "Skema dasar tanggal, provider id, confidence, tipe workout, sport, decision, training state, dan band recovery."
+      },
+      {
+        "symbol": "athlete schemas",
+        "startLine": 79,
+        "endLine": 153,
+        "summary": "Availability, constraints, background, preferences, profil atlet lengkap, dan versi partial untuk update."
+      },
+      {
+        "symbol": "workout schemas",
+        "startLine": 159,
+        "endLine": 255,
+        "summary": "Ringkasan dan detail workout, analisis pasca-lari, dan input workout manual."
+      },
+      {
+        "symbol": "plan schemas",
+        "startLine": 261,
+        "endLine": 384,
+        "summary": "Target intensitas, langkah dan struktur sesi, planned workout, blok, plan, minggu plan, dan input generate plan."
+      },
+      {
+        "symbol": "recovery and check-in",
+        "startLine": 390,
+        "endLine": 418,
+        "summary": "Skema check-in pagi skala 1 sampai 5 dan state recovery komposit."
+      },
+      {
+        "symbol": "coaching",
+        "startLine": 424,
+        "endLine": 444,
+        "summary": "Reason berbobot dan keputusan coach dengan plan sebelum dan sesudah."
+      },
+      {
+        "symbol": "dashboardSchema",
+        "startLine": 450,
+        "endLine": 513,
+        "summary": "Respons dashboard harian lengkap."
+      },
+      {
+        "symbol": "progress schemas",
+        "startLine": 519,
+        "endLine": 575,
+        "summary": "Trend, titik seri, dan respons progress termasuk prediksi lomba."
+      },
+      {
+        "symbol": "connections and sync",
+        "startLine": 581,
+        "endLine": 613,
+        "summary": "Status koneksi provider dan hasil sync."
+      },
+      {
+        "symbol": "AI coach schemas",
+        "startLine": 619,
+        "endLine": 652,
+        "summary": "Pesan ke coach dan respons dengan claims berlabel epistemik, keyMetrics, dataUsed, generatedWithoutLlm."
+      },
+      {
+        "symbol": "race goals",
+        "startLine": 658,
+        "endLine": 694,
+        "summary": "Input race goal dan skema race goal dengan analisis gap dan readiness."
+      },
+      {
+        "symbol": "weeklyReviewSchema",
+        "startLine": 700,
+        "endLine": 724,
+        "summary": "Bentuk review mingguan."
+      },
+      {
+        "symbol": "auth schemas",
+        "startLine": 730,
+        "endLine": 749,
+        "summary": "Sign up, sign in, dan respons auth dengan token."
+      },
+      {
+        "symbol": "apiErrorSchema, API_ERROR_CODES",
+        "startLine": 759,
+        "endLine": 781,
+        "summary": "Envelope error seragam dan kode error stabil."
+      }
+    ]
+  },
+  "packages/core/package.json": {
+    "summary": "Manifest @running/core: domain model dan performance engine TypeScript murni tanpa dependensi runtime; exports src/index.ts; script typecheck, test (vitest), test:watch, dan build lewat tsconfig.build.json."
+  },
+  "packages/core/tsconfig.json": {
+    "summary": "Konfigurasi TypeScript packages/core: extends tsconfig.base.json, rootDir src, outDir dist, noEmit untuk typecheck, include src/**."
+  },
+  "packages/core/tsconfig.build.json": {
+    "summary": "Konfigurasi build packages/core: extends tsconfig.json dengan noEmit false, exclude file test dan folder __fixtures__ dari output."
+  },
+  "packages/core/src/index.ts": {
+    "summary": "Barrel @running/core yang mengekspor seluruh domain (athlete, coaching, provenance, race, recovery, training, workout), engine (decision, dedup, efficiency, fitness, load, planner, race, recovery, review, state, trends, zones), units, dan util (stats, time). Seluruh paket deterministik dan bebas efek samping: tanpa I/O, tanpa jam implisit, tanpa randomness; id dan timestamp diinjeksi pemanggil."
+  },
+  "packages/core/src/__fixtures__/index.ts": {
+    "summary": "Fixture test deterministik yang meniru data latihan nyata: konstanta TEST_TZ Asia/Jakarta, makeAthlete (profil lengkap dengan background, availability, constraints, preferences, markers, dan satu race result 5K), makeProviderWorkout, makeCanonicalWorkout, makeSteadySamples (stream sampel lari steady dengan cardiac drift dan jitter terkontrol), makeDailyLoads (beban harian mengikuti pola mingguan), dan WORKOUT_TYPES_FOR_TEST."
+  },
+  "packages/core/src/domain/athlete.ts": {
+    "summary": "Tipe profil atlet: BiologicalSex, RunningExperience, SurfacePreference, DayOfWeek, TrainingAvailability (runDays, longRunDay, restDays, strengthDays, crossTrainingDays, maxSessionsPerWeek, durasi tipikal, preferredTimeOfDay), AthleteConstraints (injuryNotes, activePain, akses treadmill, track, gym, surfacePreference, unavailableDates), RunningBackground, RaceResult, ZoneMethodology, AthletePreferences (units, primaryZoneMethodology, timezone, notifications), PhysiologicalMarkers dengan nilai Sourced, dan AthleteProfile. Fungsi ageInYears dan estimateMaxHeartRate memakai rumus Tanaka (208 dikurangi 0.7 kali usia) sebagai fallback berlabel estimasi."
+  },
+  "packages/core/src/domain/coaching.ts": {
+    "summary": "Tipe keputusan coaching: DECISION_TYPES dan DecisionType (RUN_AS_PLANNED, REDUCE_VOLUME, REDUCE_INTENSITY, CHANGE_TO_EASY_RUN, CHANGE_TO_RECOVERY_RUN, MOVE_WORKOUT, REST, CROSS_TRAIN, KEEP_LONG_RUN, SHORTEN_LONG_RUN, DELOAD, PROGRESS), ReasonSeverity, Reason (key, message, severity, weight bertanda, detail), CoachDecision (confidence, reasons, affectedWorkoutId, previousPlan, recommendedPlan, headline, explanation), TRAINING_STATES dan TrainingState, TrainingStateAssessment dengan recommendProfessionalReview, CoachInsight, dan ClaimKind (fact, derived, estimate, interpretation, recommendation)."
+  },
+  "packages/core/src/domain/provenance.ts": {
+    "summary": "Provenance data agar setiap nilai bisa menjelaskan asalnya: ProviderId (strava, whoop, healthkit, manual, derived), ConfidenceLevel, SourceRecord (nilai asli dan ternormalisasi per provider dengan measuredAt dan syncedAt), Sourced (nilai terpilih plus seluruh bukti dan resolutionNote), DEFAULT_PROVIDER_PRIORITY (manual, healthkit, whoop, strava, derived), resolveSourced yang memilih berdasarkan recency lalu prioritas provider dan menaikkan confidence bila sumber numerik sepakat, serta relativeDistance."
+  },
+  "packages/core/src/domain/race.ts": {
+    "summary": "Domain lomba: STANDARD_RACE_DISTANCES (1k sampai marathon), RaceGoal (target waktu opsional, prioritas A, B, C, status upcoming, completed, cancelled, hasil), RacePrediction (durasi, pace, confidence, method riegel, vdot, threshold_pace, recent_race, blended, basis), RaceReadiness dan ReadinessFactor (fitness_gap, volume, long_run, consistency, specificity, time_remaining)."
+  },
+  "packages/core/src/domain/recovery.ts": {
+    "summary": "Tipe recovery: RecoveryBand (green, yellow, red), SleepRecord ternormalisasi lintas provider, RecoveryRecord (skor provider, HRV, RHR, SpO2, suhu kulit, calibrating), SubjectiveCheckIn (energy, soreness, stress, motivation skala 1 sampai 5 higher is better, hasPain, painNote), RecoveryState komposit (score, band, components, missingSignals, dataCompleteness, summary), RecoveryComponent dan RecoveryComponentKey, serta SignalBaseline untuk baseline rolling."
+  },
+  "packages/core/src/domain/training.ts": {
+    "summary": "Struktur plan latihan: TRAINING_BLOCK_TYPES (base, build, specific, peak, taper, race, recovery), PROGRAM_TEMPLATES (beginner_5k, improve_5k, road_10k, half_marathon, marathon, aerobic_base, return_to_running, general_fitness, custom), TrainingBlock dengan weeklyDistanceTargetsMeters, PlanStatus, TrainingPlan dengan generationBasis untuk explainability, PlanPosition, dan WeeklySummary (planned vs completed, longest run, quality sessions, total load, highIntensityShare)."
+  },
+  "packages/core/src/domain/workout.ts": {
+    "summary": "Taksonomi dan model workout: RUN_WORKOUT_TYPES dan NON_RUN_WORKOUT_TYPES, WorkoutType, isRunType, HARD_WORKOUT_TYPES dan isHardType, SportType; struktur sesi (IntensityTarget zone, pace, heart_rate, rpe, effort; WorkoutStep, WorkoutRepeat, WorkoutSegment, WorkoutStructure dengan warmup, main, cooldown); PlannedWorkout dengan status dan modifiedFrom; GeoPoint, WorkoutSample, WorkoutSplit, WorkoutSourceRef; CanonicalWorkout (rekaman terdeduplikasi dengan sourceRecords, metrik, splits, samples, route, sourceConfidence, plannedWorkoutId); ProviderWorkout (pandangan mentah satu provider sebelum dedup); fungsi effectivePaceSecondsPerKm."
+  },
+  "packages/core/src/engines/decision.ts": {
+    "summary": "Mesin keputusan coach yang deterministik dan menjelaskan dirinya sendiri. decideToday mengumpulkan Reason berbobot bertanda: nyeri pada check-in langsung menghasilkan REST dengan rujukan ke profesional; tanpa sesi atau rest day menghasilkan RUN_AS_PLANNED; band recovery (red, yellow, green), komponen recovery yang sangat rendah, cakupan data rendah; jarak hard day (kemarin atau tiga kali dalam tujuh hari); training state (overreaching_risk, highly_fatigued, fatigued, fresh, undertrained); ACWR di atas 1.5; kedekatan lomba (dua hari, taper sepuluh hari). resolve memetakan skor net ke keputusan paling ringan yang menghormati defisit: REST, lalu SHORTEN_LONG_RUN, CHANGE_TO_EASY_RUN, atau CHANGE_TO_RECOVERY_RUN, lalu REDUCE_INTENSITY, KEEP_LONG_RUN, atau REDUCE_VOLUME, selain itu RUN_AS_PLANNED. Transformasi plan toRest, toEasy, toRecovery, reduceIntensity, scaleDistance mengisi modifiedFrom. buildDecision menghitung confidence dari kekuatan bukti dan cakupan data; explain menyusun teks Why secara deterministik.",
+    "sections": [
+      {
+        "symbol": "DecisionInputs",
+        "startLine": 41,
+        "endLine": 61,
+        "summary": "Input mesin keputusan termasuk plannedWorkout, recovery, trainingState, loadState, checkIn, hard session, daysUntilRace, dan idFactory."
+      },
+      {
+        "symbol": "decideToday",
+        "startLine": 63,
+        "endLine": 314,
+        "summary": "Pengumpulan sinyal berurutan sesuai hierarki safety, recovery, spacing, state dan load, race proximity, lalu resolusi dan confidence."
+      },
+      {
+        "symbol": "resolve",
+        "startLine": 316,
+        "endLine": 395,
+        "summary": "Pemetaan skor net ke DecisionType, headline, dan plan yang direkomendasikan."
+      },
+      {
+        "symbol": "toRest, toEasy, toRecovery, reduceIntensity, scaleDistance",
+        "startLine": 401,
+        "endLine": 508,
+        "summary": "Transformasi PlannedWorkout dengan status modified dan alasan."
+      },
+      {
+        "symbol": "buildDecision",
+        "startLine": 514,
+        "endLine": 540,
+        "summary": "Perakitan CoachDecision dengan reasons terurut signifikansi."
+      },
+      {
+        "symbol": "explain",
+        "startLine": 547,
+        "endLine": 581,
+        "summary": "Menyusun teks penjelasan dari reasons negatif dan positif tanpa LLM."
+      }
+    ]
+  },
+  "packages/core/src/engines/dedup.ts": {
+    "summary": "Deduplikasi dan merge workout lintas provider, bagian paling kritis dari ingest. DedupConfig dan DEFAULT_DEDUP_CONFIG (gate start time 15 menit, delta durasi 20 persen, delta jarak 15 persen, threshold 0.62); FIELD_PRIORITY per field (jarak, elevasi, dan route dari Strava, HR dan kalori dari WHOOP, cadence dan power dari HealthKit). similarity menolak provider yang sama, sport berbeda, start time terlalu jauh, serta durasi atau jarak di luar toleransi, lalu menggabungkan sinyal startTime, overlap, duration, distance, heartRate, dan route dengan bobot; routeSimilarity membandingkan tiga titik anchor lewat haversineMeters. clusterWorkouts melakukan single-link clustering kronologis. mergeCluster memilih setiap field dari provider terpercaya lewat selectField, mencatat contributedFields per sumber, memakai union waktu, tipe paling spesifik, dan computeSourceConfidence (korroborasi plus kelengkapan). deduplicateWorkouts adalah pipeline lengkap dengan idFor dari pemanggil.",
+    "sections": [
+      {
+        "symbol": "DedupConfig, DEFAULT_DEDUP_CONFIG, FIELD_PRIORITY",
+        "startLine": 37,
+        "endLine": 80,
+        "summary": "Ambang gate dan prioritas kepercayaan per field."
+      },
+      {
+        "symbol": "similarity",
+        "startLine": 95,
+        "endLine": 200,
+        "summary": "Skor kemiripan dua ProviderWorkout dengan hard gate dan kombinasi berbobot."
+      },
+      {
+        "symbol": "routeSimilarity, haversineMeters",
+        "startLine": 207,
+        "endLine": 238,
+        "summary": "Perbandingan rute berbasis tiga anchor dan jarak great-circle."
+      },
+      {
+        "symbol": "clusterWorkouts",
+        "startLine": 248,
+        "endLine": 275,
+        "summary": "Pengelompokan single-link menjadi cluster satu sesi nyata."
+      },
+      {
+        "symbol": "selectField, mergeCluster",
+        "startLine": 278,
+        "endLine": 402,
+        "summary": "Pemilihan nilai per field dan penggabungan cluster menjadi CanonicalWorkout dengan provenance."
+      },
+      {
+        "symbol": "computeSourceConfidence",
+        "startLine": 410,
+        "endLine": 427,
+        "summary": "Skor kepercayaan 0 sampai 1 dari jumlah provider dan kelengkapan data."
+      },
+      {
+        "symbol": "deduplicateWorkouts",
+        "startLine": 434,
+        "endLine": 451,
+        "summary": "Pipeline raw provider records menjadi canonical workouts."
+      }
+    ]
+  },
+  "packages/core/src/engines/efficiency.ts": {
+    "summary": "Efisiensi aerobik dan heart-rate drift. efficiencyFactor (meter per menit per bpm), toEfficiencyPoint dari CanonicalWorkout dengan konteks (indoor, suhu, elevasi per km, tipe), ComparabilityFilter dan DEFAULT_COMPARABILITY (hanya lari aerobik steady minimal 3 km, elevasi maksimal 20 m per km, suhu maksimal 28 derajat) serta comparableEfficiencyPoints; efficiencyTrend regresi linear minimal empat titik dengan arah improving, stable (di bawah 2 persen), declining dan confidence dari jumlah sampel serta r2, interpretEfficiency menghasilkan kalimat jujur. computeDecoupling membagi stream sampel menjadi dua paruh, gate 20 menit dan koefisien variasi pace maksimal 0.18, menghasilkan driftPercent dengan interpretasi berhati-hati (interpretDrift); decouplingFromSplits versi dari data lap tanpa stream sampel.",
+    "sections": [
+      {
+        "symbol": "efficiencyFactor, toEfficiencyPoint",
+        "startLine": 40,
+        "endLine": 95,
+        "summary": "Perhitungan EF dan ekstraksi titik efisiensi dari workout."
+      },
+      {
+        "symbol": "ComparabilityFilter, comparableEfficiencyPoints",
+        "startLine": 97,
+        "endLine": 143,
+        "summary": "Penyaringan ketat agar hanya sesi yang sebanding yang dibandingkan."
+      },
+      {
+        "symbol": "efficiencyTrend",
+        "startLine": 145,
+        "endLine": 236,
+        "summary": "Tren EF lewat regresi dengan confidence dan interpretasi."
+      },
+      {
+        "symbol": "computeDecoupling",
+        "startLine": 242,
+        "endLine": 357,
+        "summary": "Aerobic decoupling dari stream sampel dengan gate validitas."
+      },
+      {
+        "symbol": "decouplingFromSplits",
+        "startLine": 363,
+        "endLine": 394,
+        "summary": "Drift dari splits saat stream sampel tidak ada."
+      }
+    ]
+  },
+  "packages/core/src/engines/fitness.ts": {
+    "summary": "Estimasi fitness dan prediksi lomba, semuanya berlabel estimasi. riegelPredict dengan eksponen 1.06; model VDOT Daniels-Gilbert: oxygenCost, percentOfMax, vdotFromPerformance (gate minimal 1000 m, durasi 3 menit sampai 4 jam, VDOT 15 sampai 90), predictFromVdot lewat bisection, thresholdPaceFromVdot (86 persen), easyPaceRangeFromVdot (59 sampai 74 persen). FitnessEstimate dan FitnessInput; estimateFitness menggabungkan VDOT tiap performa (usia maksimal satu tahun, jarak 1500 sampai 42500 m) dengan bobot recency half-life 8 minggu dan kualitas sumber (race 1, time trial 0.9, detected effort 0.6, self-reported 0.5); fitnessConfidence dari kesegaran, keberadaan performa nyata, dan sebaran estimasi. predictRace memadukan VDOT dan Riegel, menurunkan confidence saat ekstrapolasi jauh (rasio jarak di atas 2.5 dan 4) atau kedua model tidak sepakat lebih dari 8 persen. Helper raceResultsToFitnessInputs, targetPaceForGoal, estimateThresholdHeartRate.",
+    "sections": [
+      {
+        "symbol": "riegelPredict",
+        "startLine": 39,
+        "endLine": 55,
+        "summary": "Prediksi waktu lintas jarak dengan hukum Riegel."
+      },
+      {
+        "symbol": "oxygenCost, percentOfMax, vdotFromPerformance, predictFromVdot, thresholdPaceFromVdot, easyPaceRangeFromVdot",
+        "startLine": 61,
+        "endLine": 218,
+        "summary": "Model VDOT lengkap dengan gate validitas dan inversi numerik."
+      },
+      {
+        "symbol": "FitnessEstimate, FitnessInput, estimateFitness, fitnessConfidence",
+        "startLine": 224,
+        "endLine": 377,
+        "summary": "Snapshot fitness dari riwayat performa dengan pembobotan dan confidence."
+      },
+      {
+        "symbol": "predictRace, raceResultsToFitnessInputs, targetPaceForGoal, estimateThresholdHeartRate",
+        "startLine": 383,
+        "endLine": 488,
+        "summary": "Prediksi lomba gabungan dan helper terkait."
+      }
+    ]
+  },
+  "packages/core/src/engines/load.ts": {
+    "summary": "Training load sebagai keluarga model, bukan satu rumus. SessionLoad dan LoadModel (trimp_hr, hr_zone, srpe, duration); trimp Banister dengan koefisien 1.92 pria, 1.67 wanita, 1.795 unspecified; sessionRpeLoad Foster dibagi lima agar sebanding; computeSessionLoad memilih model terbaik sesuai data yang ada (HR rata-rata plus max dan resting HR, sampel HR plus zona, RPE, atau durasi kali intensitas tipe) dan selalu mencatat basis serta confidence. TrainingLoadState: toDailySeries mengisi hari tanpa latihan dengan nol, computeTrainingLoadState menghitung acute EWMA 7 hari, chronic EWMA 28 hari, ACWR hanya bila ada 21 hari riwayat dan 8 hari aktif, trainingStressBalance, weeklyLoad, monotony dan strain Foster. computeIntensityDistribution membagi waktu lari menjadi easy, moderate, hard dari zona HR atau tipe sesi dan menandai easy share di bawah 75 persen.",
+    "sections": [
+      {
+        "symbol": "trimp, sessionRpeLoad, computeSessionLoad",
+        "startLine": 49,
+        "endLine": 214,
+        "summary": "Model beban per sesi dan pemilihan model berdasarkan data yang tersedia."
+      },
+      {
+        "symbol": "TrainingLoadState, toDailySeries, computeTrainingLoadState",
+        "startLine": 220,
+        "endLine": 326,
+        "summary": "Agregasi beban harian menjadi acute, chronic, ACWR, monotony, strain."
+      },
+      {
+        "symbol": "computeIntensityDistribution",
+        "startLine": 337,
+        "endLine": 384,
+        "summary": "Distribusi intensitas easy, moderate, hard dengan flag guideline 75 persen."
+      }
+    ]
+  },
+  "packages/core/src/engines/planner.ts": {
+    "summary": "Generator plan periodisasi deterministik. PlanGenerationInputs; TEMPLATES per ProgramTemplateId (urutan blok berbobot, peakVolumeMultiplier, longRunShareAtPeak, qualitySessionsInBuild, minWeeklyDistanceMeters); kenaikan mingguan maksimum 10 persen dan deload 70 persen tiap empat minggu. generateTrainingPlan: mulai Senin, volume awal dari volume aktual atlet, buildVolumeProgression (build dengan cap dan deload, taper ke sekitar 55 persen puncak), buildBlocks membagi minggu proporsional dengan minimal satu minggu per blok, lalu buildWeek per minggu: long run di hari pilihan, pickQualityDays memilih hari quality yang tidak berdekatan, pickQualityType per blok (tempo di base, intervals lalu threshold di build, threshold lalu race_simulation di specific, strides di taper), buildQualityStructure membuat warm-up, repeat, cool-down dengan target zona atau pace threshold, makeWorkout menurunkan target durasi dari easy pace, buildRaceWeek untuk minggu lomba, menghormati restDays dan unavailableDates; generationBasis berisi catatan penjelasan. Export weeksUntil, findPlanPosition, dayOfWeekForDate.",
+    "sections": [
+      {
+        "symbol": "TemplateDefinition, TEMPLATES",
+        "startLine": 77,
+        "endLine": 198,
+        "summary": "Definisi setiap template program dan karakteristik volumenya."
+      },
+      {
+        "symbol": "generateTrainingPlan",
+        "startLine": 207,
+        "endLine": 318,
+        "summary": "Orkestrasi volume, blok, sesi, dan generationBasis."
+      },
+      {
+        "symbol": "buildVolumeProgression",
+        "startLine": 324,
+        "endLine": 371,
+        "summary": "Kurva volume mingguan dengan cap, deload, dan taper."
+      },
+      {
+        "symbol": "buildBlocks, blockLabel",
+        "startLine": 373,
+        "endLine": 451,
+        "summary": "Distribusi minggu ke blok periodisasi."
+      },
+      {
+        "symbol": "buildWeek",
+        "startLine": 482,
+        "endLine": 608,
+        "summary": "Penjadwalan satu minggu: long run, quality, easy."
+      },
+      {
+        "symbol": "buildRaceWeek",
+        "startLine": 610,
+        "endLine": 654,
+        "summary": "Minggu lomba: race day plus shakeout dan easy run."
+      },
+      {
+        "symbol": "qualitySessionsFor, pickQualityDays, pickQualityType, qualityTitle, qualityPurpose",
+        "startLine": 656,
+        "endLine": 754,
+        "summary": "Aturan jumlah, hari, jenis, judul, dan tujuan sesi quality."
+      },
+      {
+        "symbol": "buildQualityStructure",
+        "startLine": 757,
+        "endLine": 914,
+        "summary": "Struktur konkret untuk intervals, threshold, tempo, strides, race simulation."
+      },
+      {
+        "symbol": "makeWorkout",
+        "startLine": 916,
+        "endLine": 952,
+        "summary": "Pembuatan PlannedWorkout dengan estimasi durasi."
+      },
+      {
+        "symbol": "weeksUntil, findPlanPosition, dayOfWeekForDate",
+        "startLine": 957,
+        "endLine": 985,
+        "summary": "Helper ukuran plan, posisi atlet dalam plan, dan hari dalam minggu."
+      }
+    ]
+  },
+  "packages/core/src/engines/race.ts": {
+    "summary": "Analisis race goal dan readiness. analyzeRaceGoal menghitung minggu dan hari tersisa, target pace, estimasi saat ini dari RacePrediction, gap total dan per km, targetLooksUnrealistic (gap melebihi perbaikan plausibel sekitar 1 persen per minggu), dan catatan lewat buildNote. computeRaceReadiness memberi skor 0 sampai 100 berbobot dari faktor fitness_gap (0.35), volume vs rekomendasi per jarak (0.2), long run vs kebutuhan (0.2), consistency (0.15), dan specificity sesi race pace (0.1) dengan ringkasan yang menyebut faktor terlemah; helper recommendedWeeklyVolume dan requiredLongRunDistance."
+  },
+  "packages/core/src/engines/recovery.ts": {
+    "summary": "Mesin recovery komposit yang sengaja tidak meniru skor WHOOP. COMPONENT_WEIGHTS (provider_recovery 0.22, hrv 0.2, resting_hr 0.15, sleep_duration 0.15, sleep_quality 0.08, subjective 0.12, training_load 0.08); buildBaseline rolling 14 hari dengan minimal tiga sampel. computeRecoveryState menilai tiap komponen 0 sampai 100: skor provider (diabaikan saat calibrating), HRV vs baseline personal dengan skala asimetris (minus 20 persen ke plus 10 persen), RHR vs baseline (plus 8 bpm ke minus 3 bpm), durasi tidur vs kebutuhan, kualitas tidur, check-in subjektif berbobot, dan ACWR; bobot dinormalisasi ulang atas sinyal yang ada sehingga sinyal hilang menurunkan dataCompleteness bukan skor; band green minimal 67, yellow minimal 40, selain itu red; summarize menyebut limiter utama. estimateSleepNeed memakai persentil 75 riwayat tidur dengan fallback 8 jam."
+  },
+  "packages/core/src/engines/review.ts": {
+    "summary": "Review mingguan dan blok yang deterministik. buildWeeklySummary merangkum minggu (jarak dan sesi planned vs completed, longest run, quality sessions, total load, durasi, highIntensityShare). buildWeeklyReview menghitung perubahan jarak, completionRate, rata-rata recovery dan tidur, daftar whatWentWell dan whatNeedsAttention (konsistensi, lonjakan volume, distribusi intensitas, recovery, tidur, efisiensi), assessWeek menghasilkan excellent_progression, good_progression, steady, below_plan, significantly_below_plan, atau overreaching, lalu headline, keyAdaptation, dan nextWeekPriority. buildBlockReview membandingkan awal dan akhir blok (volume, easy pace, threshold pace, long run, completion) dan recommendNextBlock; groupWorkoutsByWeek mengelompokkan workout per Senin."
+  },
+  "packages/core/src/engines/state.ts": {
+    "summary": "Klasifikasi training state yang bukan penilaian medis. assessTrainingState mengumpulkan sinyal Reason: tren volume (spike di atas 25 persen, building di atas 8 persen, drop di bawah minus 30 persen), ACWR (di atas 1.5, di atas 1.25, di bawah 0.75), monotony tinggi, rata-rata recovery tujuh hari, tren efisiensi, konsistensi, layoff minimal sepuluh hari, energi rendah berturut-turut, dan nyeri aktif. classify memutuskan overreaching_risk (beban tinggi dan recovery buruk bersamaan), undertrained (14 hari tanpa lari atau kurang dari 5 km), highly_fatigued, fatigued, building, fresh, atau normal; confidence dari jumlah bukti; recommendProfessionalReview untuk nyeri atau kelelahan ekstrem berkelanjutan; summarize memakai STATE_SUMMARIES dan dua sinyal warning teratas."
+  },
+  "packages/core/src/engines/trends.ts": {
+    "summary": "Analisis tren longitudinal yang memisahkan nilai, arah, dan confidence. TrendPoint, Trend, TrendOptions (metric, polarity higher_is_better atau lower_is_better, minSamples, stableThresholdPercent, unitLabel, format). computeTrend memakai regresi linear atas hari sejak titik pertama, endpoint hasil fit untuk baseline dan current, arah improving, stable, declining, atau insufficient_data, trendConfidence dari jumlah titik, r2, panjang window, dan noise, serta summarizeTrend menghasilkan kalimat untuk atlet. Helper weeklyTotals, windowed, dan TREND_WINDOWS (4, 8, 12 minggu)."
+  },
+  "packages/core/src/engines/zones.ts": {
+    "summary": "Komputasi zona latihan yang tidak pernah mencampur metodologi. Zone dan ZoneSet (methodology, kind heart_rate atau pace, basis, note). ZONE_DEFINITIONS lima zona dengan batas untuk max_hr_percent, hr_reserve (Karvonen), dan threshold_hr; computeHeartRateZones melempar bila anchor yang dibutuhkan tidak ada dan membuat zona teratas terbuka ke atas. selectHeartRateMethodology memilih metodologi yang datanya tersedia dengan urutan fallback threshold, reserve, max. computePaceZones dari threshold pace lewat PACE_ZONE_DEFINITIONS. zoneForHeartRate, zoneForPace, dan zoneDistribution (fraksi waktu per zona dari stream sampel)."
+  },
+  "packages/core/src/units/index.ts": {
+    "summary": "Konversi dan format unit dengan unit internal kanonis (meter, detik, detik per km, meter per detik, kilogram): kmToMeters, metersToKm, milesToMeters, metersToMiles, speedToPace, paceToSpeed, computePace, paceKmToMile, formatDuration (M:SS atau H:MM:SS dengan clamp negatif), formatPace per km atau per mil, formatPaceRange, formatDistance, parseDuration, formatSignedDuration. Imperial hanya urusan presentasi."
+  },
+  "packages/core/src/util/stats.ts": {
+    "summary": "Helper statistik yang total (input kosong mengembalikan undefined, bukan melempar): mean, sum, stdDev populasi, median, ewma dengan alpha 2 dibagi N plus 1, linearRegression (slope, intercept, r2), clamp, lerp, scaleClamped untuk memetakan sinyal mentah ke sub-skor 0 sampai 100, percentChange, round, coefficientOfVariation, dan compact."
+  },
+  "packages/core/src/util/time.ts": {
+    "summary": "Helper waktu dengan invarian: semua disimpan UTC, hari latihan adalah tanggal lokal atlet. Konstanta MS_PER_SECOND sampai MS_PER_DAY, tipe LocalDate, toLocalDate (Intl en-CA per timezone IANA), localHour, localDayOfWeek, addDaysToLocalDate (anchor siang UTC agar aman dari DST), daysBetweenLocalDates, startOfWeek (Senin), isoWeekKey, localDateRange, absSecondsBetween, intervalsOverlap, overlapSeconds."
+  },
+  "packages/core/src/engines/decision.test.ts": {
+    "summary": "Test vitest untuk decideToday: keamanan (nyeri memaksa REST dan merujuk ke profesional tanpa diagnosis), recovery baik menjalankan sesi sesuai rencana dengan penjelasan, recovery buruk mengganti sesi keras dengan easy run dan mencatat modifiedFrom serta memendekkan long run alih-alih membatalkan, jarak hard day (kemarin, diabaikan untuk easy run, terlalu banyak dalam seminggu), kedekatan lomba menurunkan intensitas, rest day dan tanpa plan, kontrak explainability (selalu ada reason, urut signifikansi, confidence dalam rentang dan turun saat cakupan data rendah), serta determinisme."
+  },
+  "packages/core/src/engines/dedup.test.ts": {
+    "summary": "Test dedup: skenario tiga provider (Strava, WHOOP, HealthKit) runtuh menjadi satu canonical workout dengan semua provider tercatat, jarak dari Strava dan HR dari WHOOP, rentang waktu union, dan source confidence naik saat terkorroborasi; penolakan sesi berbeda (double day, provider sama, sport beda, jarak di luar toleransi, start time jauh); edge case (tanpa HR, manual tanpa jarak, melewati tengah malam, urutan independen, cluster kosong melempar, aktivitas auto-detect yang memotong warm-up); haversineMeters."
+  },
+  "packages/core/src/engines/efficiency.test.ts": {
+    "summary": "Test efficiencyFactor (naik saat pace membaik, turun saat HR naik, undefined untuk input degeneratif), comparableEfficiencyPoints (menyaring interval, lari pendek, berbukit, panas), efficiencyTrend (menolak titik terlalu sedikit, mendeteksi peningkatan dan penurunan, fluktuasi kecil dianggap stabil, data noisy confidence rendah, interpretasi selalu ada), computeDecoupling (drift rendah untuk lari coupled, drift tinggi saat HR naik, tidak mengklaim penyebab, menolak interval dan lari pendek, drift negatif), decouplingFromSplits, dan toEfficiencyPoint."
+  },
+  "packages/core/src/engines/fitness.test.ts": {
+    "summary": "Test riegelPredict, model VDOT (nilai plausibel untuk 5K, lebih cepat berarti lebih tinggi, round-trip predictFromVdot, menolak effort di luar rentang, threshold pace lebih cepat dari easy pace), estimateFitness (tanpa data confidence rendah, satu race terbaru, race baru dibobot lebih dari yang lama, self-reported diturunkan), dan predictRace (10K lebih lambat dari dua kali 5K, pace konsisten dengan waktu, confidence turun saat ekstrapolasi 5K ke maraton, undefined tanpa data, selalu menyatakan basis)."
+  },
+  "packages/core/src/engines/load.test.ts": {
+    "summary": "Test trimp (naik dengan durasi dan intensitas, linear dalam durasi, koefisien midpoint untuk unspecified, nol di bawah resting HR, undefined untuk reserve degeneratif), pemilihan model computeSessionLoad (TRIMP, fallback sRPE, fallback durasi, rest day nol, intervals lebih berat, tanpa durasi undefined, basis selalu ada), toDailySeries (mengisi rest day nol, menjumlah sesi sehari), computeTrainingLoadState (acute dan chronic, ACWR hanya dengan riwayat cukup, spike terdeteksi, monotony dan strain, degenerate variance, seri kosong), computeIntensityDistribution (easy share di bawah 75 persen, minggu seimbang, abaikan rest, kosong)."
+  },
+  "packages/core/src/engines/planner.test.ts": {
+    "summary": "Test generateTrainingPlan: struktur (blok menutupi jumlah minggu, mulai Senin, urutan base, build, specific, taper, tanpa celah atau tumpang tindih, plan sangat pendek), progresi volume (jangkar ke volume aktual, tidak melampaui puncak sejauh ini lebih dari cap, tren build dibatasi, ada deload, taper, pemula tidak mulai terlalu tinggi), penjadwalan (long run di hari pilihan, tidak di rest day, hormati tanggal tidak tersedia, tanpa hard day berurutan, batas sesi per minggu, setiap sesi punya purpose, interval punya struktur, tanpa hari tersedia tanpa sesi), plan berorientasi lomba (race di hari lomba, minggu lomba ringan), determinisme dan generationBasis, findPlanPosition, weeksUntil."
+  },
+  "packages/core/src/engines/recovery.test.ts": {
+    "summary": "Test computeRecoveryState (atlet pulih green, kurang pulih red, tidak sekadar meniru skor provider, degradasi tanpa wearable, hasil netral jujur tanpa data, abaikan skor saat calibrating, HRV dinilai terhadap baseline sendiri, renormalisasi bobot, ringkasan menyebut limiter, komponen urut bobot), buildBaseline (menolak sampel sedikit, mean dan deviasi, hanya window terbaru), dan estimateSleepNeed (default 8 jam, persentil atas, clamp)."
+  },
+  "packages/core/src/engines/zones.test.ts": {
+    "summary": "Test computeHeartRateZones (lima zona kontigu naik, batas berbeda antara persen max dan HR reserve, Karvonen memperhitungkan resting HR, menolak tanpa resting HR dan input tidak masuk akal, mencatat anchor), selectHeartRateMethodology (hormati preferensi, fallback, threshold diutamakan), zoneForHeartRate (penempatan, di atas max ke zona teratas, di bawah zona 1 undefined, melempar untuk pace set), computePaceZones (urutan lambat ke cepat, threshold di zona threshold, pace sangat cepat ke zona teratas, tolak non-positif), zoneDistribution (jumlah satu, nol tanpa HR, stream kosong)."
+  },
+  "packages/core/src/units/index.test.ts": {
+    "summary": "Test unit: round-trip pace dan speed, computePace, tolak pembagian nol; formatDuration (M:SS, H:MM:SS, force hours, clamp negatif); formatPace metric dan imperial serta dash untuk nol; formatDistance (meter, desimal, mil); parseDuration (M:SS dan H:MM:SS, tolak input rusak, toleransi whitespace)."
+  },
+  "packages/core/src/util/time.test.ts": {
+    "summary": "Test waktu: toLocalDate (hari lokal bukan UTC, lintas date line, timezone di belakang UTC), addDaysToLocalDate (tambah dan kurang, lintas bulan dan tahun, leap day, tanpa drift DST), daysBetweenLocalDates termasuk lintas DST, startOfWeek (Senin, Minggu sebagai akhir minggu, idempoten), isoWeekKey (sortable, sama untuk satu minggu, beda antar minggu), localDateRange, localDayOfWeek, overlapSeconds."
+  }
+}
