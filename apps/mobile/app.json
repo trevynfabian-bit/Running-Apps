@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "Running OS",
+    "slug": "running-os",
+    "version": "0.1.0",
+    "scheme": "runningos",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.runningos.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.runningos.app",
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "@running/health-kit",
+        {
+          "healthSharePermission": "Running OS reads your workouts, heart rate, running metrics and sleep to calculate your training load, recovery and daily readiness."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "apiUrl": "http://localhost:4000"
+    }
+  }
+}

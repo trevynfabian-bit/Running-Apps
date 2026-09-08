@@ -1,0 +1,9 @@
+packages:
+  - 'packages/*'
+  - 'apps/*'
+  - 'modules/*'
+
+# React Native / Expo require a single hoisted copy of react & react-native.
+# Keeping these public avoids duplicate-instance errors in Metro.
+publicHoistPattern:
+  - '*'
