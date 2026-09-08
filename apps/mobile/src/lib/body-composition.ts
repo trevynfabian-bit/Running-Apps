@@ -153,6 +153,26 @@ export function formatSessionDate(localDate: string): string {
 }
 
 /**
+ * How long ago a session was, in whole local days: `today`, `yesterday`,
+ * `12 days ago`. Uses the session's local date rather than the instant so the
+ * answer matches the calendar the athlete sees.
+ */
+export function formatDaysAgo(localDate: string, today: Date = new Date()): string {
+  const [y, m, d] = localDate.split('-').map(Number) as [number, number, number];
+  if ([y, m, d].some((n) => Number.isNaN(n))) return '';
+  const then = Date.UTC(y, m - 1, d);
+  const now = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  const days = Math.round((now - then) / 86_400_000);
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 7) return `${days} days ago`;
+  const weeks = Math.round(days / 7);
+  if (days < 60) return `${weeks} week${weeks === 1 ? '' : 's'} ago`;
+  const months = Math.round(days / 30);
+  return `${months} month${months === 1 ? '' : 's'} ago`;
+}
+
+/**
  * The estimate to headline for a session: the formula result when present,
  * because it is reproducible from the athlete's own numbers; otherwise the
  * latest AI result that actually produced a value.
@@ -390,6 +410,17 @@ function buildStubSummary(): BodyCompositionSummary {
 /** Small artificial latency so loading states are visible during development. */
 const STUB_LATENCY_MS = 250;
 
+/**
+ * Which stub dataset to serve. Lets every state of a screen be reached while
+ * the module is still frontend-only: open `/body-composition?scenario=empty`
+ * to see the first-run experience. Ignored once the API backs this module.
+ */
+export type StubScenario = 'sessions' | 'empty';
+
+export function stubScenarioFromParam(value: string | string[] | undefined): StubScenario {
+  return value === 'empty' ? 'empty' : 'sessions';
+}
+
 // ---------------------------------------------------------------------------
 // Data source
 // ---------------------------------------------------------------------------
@@ -401,8 +432,13 @@ const STUB_LATENCY_MS = 250;
  * by the stub until the API routes exist.
  */
 export const bodyComposition = {
-  summary: async (): Promise<ApiResult<BodyCompositionSummary>> => {
+  summary: async (
+    options: { scenario?: StubScenario } = {},
+  ): Promise<ApiResult<BodyCompositionSummary>> => {
     await new Promise((resolve) => setTimeout(resolve, STUB_LATENCY_MS));
-    return { data: buildStubSummary(), fromCache: false };
+    const full = buildStubSummary();
+    const data: BodyCompositionSummary =
+      options.scenario === 'empty' ? { ...full, latest: undefined, sessions: [] } : full;
+    return { data, fromCache: false };
   },
 };
