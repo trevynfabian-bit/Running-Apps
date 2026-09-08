@@ -6,7 +6,7 @@
  * body-fat estimate as a labelled range, a handful of tape measurements, and
  * the four-sided portrait. With no sessions yet it explains what a session is
  * instead of showing an empty chart. Three quick actions lead to the things
- * an athlete does next: a new session, logging measurements, comparing.
+ * an athlete does next, and the history lists every session newest first.
  *
  * Every number here is a measurement the athlete took or an estimate derived
  * from one. Estimates are shown as ranges with their method and confidence and
@@ -19,7 +19,6 @@ import { router, useLocalSearchParams } from 'expo-router';
 
 import {
   bodyComposition,
-  formatSessionDate,
   stubScenarioFromParam,
   type BodyCompositionSummary,
 } from '../../src/lib/body-composition';
@@ -31,6 +30,7 @@ import {
   LatestStatusCard,
   LatestStatusEmpty,
   QuickActions,
+  SessionHistoryList,
   type QuickAction,
 } from '../../src/components/body-composition';
 
@@ -91,7 +91,6 @@ export default function BodyCompositionScreen(): React.ReactElement {
 
   const data = summary.data;
   const latest = data.latest;
-  const oldest = data.sessions[data.sessions.length - 1];
 
   return (
     <Screen
@@ -125,12 +124,7 @@ export default function BodyCompositionScreen(): React.ReactElement {
 
         <QuickActions actions={QUICK_ACTIONS} />
 
-        {oldest ? (
-          <Type variant="caption" tone="tertiary">
-            {data.sessions.length} session{data.sessions.length === 1 ? '' : 's'} recorded since{' '}
-            {formatSessionDate(oldest.localDate)}.
-          </Type>
-        ) : null}
+        <SessionHistoryList sessions={data.sessions} />
       </Stack>
     </Screen>
   );

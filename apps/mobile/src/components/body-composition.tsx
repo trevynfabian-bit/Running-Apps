@@ -14,7 +14,7 @@
  */
 
 import React from 'react';
-import { Image, View } from 'react-native';
+import { Image, Pressable, View } from 'react-native';
 
 import {
   formatBodyFatMethod,
@@ -335,6 +335,113 @@ export function QuickActions({ actions }: { actions: readonly QuickAction[] }): 
           </Card>
         ))}
       </Stack>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Session history
+// ---------------------------------------------------------------------------
+
+/** One line that identifies a session at a glance: the waist reading, weight, photo count. */
+function describeSession(session: BodyCompositionSession): string {
+  const parts: string[] = [];
+  const waist = session.measurements.find((m) => m.pointCode === 'waist');
+  if (waist) parts.push(`Waist ${formatCircumference(waist.value, waist.unit)}`);
+  if (session.weightKilograms !== undefined) parts.push(`${session.weightKilograms.toFixed(1)} kg`);
+  const photos = session.photos.length;
+  parts.push(`${photos} photo${photos === 1 ? '' : 's'}`);
+  return parts.join(' · ');
+}
+
+/**
+ * Every session, newest first, in the same row pattern the app uses for its
+ * other histories: rows inside one card, separated by hairlines, the number
+ * that matters on the right.
+ */
+export function SessionHistoryList({
+  sessions,
+  onSelect,
+}: {
+  sessions: readonly BodyCompositionSession[];
+  /** Opens a session, once there is a detail screen to open. */
+  onSelect?: (session: BodyCompositionSession) => void;
+}): React.ReactElement {
+  const ordered = [...sessions].sort((a, b) => b.capturedAt.localeCompare(a.capturedAt));
+  const oldest = ordered[ordered.length - 1];
+
+  return (
+    <View>
+      <SectionHeader title="History" />
+      {ordered.length === 0 ? (
+        <Type variant="caption" tone="tertiary">
+          Sessions will appear here, newest first.
+        </Type>
+      ) : (
+        <Stack gap={spacing.sm}>
+          <Card>
+            <Stack gap={spacing.sm}>
+              {ordered.map((session, index) => {
+                const estimate = primaryEstimate(session);
+                const row = (
+                  <Stack
+                    direction="row"
+                    justify="space-between"
+                    align="center"
+                    gap={spacing.md}
+                    style={{ minHeight: 44 }}
+                  >
+                    <Stack gap={2} style={{ flex: 1 }}>
+                      <Type variant="body">{formatSessionDate(session.localDate)}</Type>
+                      <Type variant="caption" tone="tertiary" numberOfLines={1}>
+                        {describeSession(session)}
+                      </Type>
+                    </Stack>
+                    <Stack gap={2} align="flex-end">
+                      {estimate ? (
+                        <>
+                          <Type variant="metricSmall">{formatBodyFatRange(estimate)}</Type>
+                          <Type variant="caption" tone="tertiary">
+                            {formatBodyFatMethod(estimate.method)} · {estimate.confidenceLabel}
+                          </Type>
+                        </>
+                      ) : (
+                        <Type variant="caption" tone="tertiary">
+                          No estimate
+                        </Type>
+                      )}
+                    </Stack>
+                  </Stack>
+                );
+
+                return (
+                  <React.Fragment key={session.id}>
+                    {index > 0 ? <Divider /> : null}
+                    {onSelect ? (
+                      <Pressable
+                        onPress={() => onSelect(session)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Open session from ${formatSessionDate(session.localDate)}`}
+                        style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1 })}
+                      >
+                        {row}
+                      </Pressable>
+                    ) : (
+                      row
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </Stack>
+          </Card>
+          {oldest ? (
+            <Type variant="caption" tone="tertiary">
+              {ordered.length} session{ordered.length === 1 ? '' : 's'} since{' '}
+              {formatSessionDate(oldest.localDate)}.
+            </Type>
+          ) : null}
+        </Stack>
+      )}
     </View>
   );
 }

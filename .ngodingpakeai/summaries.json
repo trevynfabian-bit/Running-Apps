@@ -1048,7 +1048,7 @@
     "summary": "Test waktu: toLocalDate (hari lokal bukan UTC, lintas date line, timezone di belakang UTC), addDaysToLocalDate (tambah dan kurang, lintas bulan dan tahun, leap day, tanpa drift DST), daysBetweenLocalDates termasuk lintas DST, startOfWeek (Senin, Minggu sebagai akhir minggu, idempoten), isoWeekKey (sortable, sama untuk satu minggu, beda antar minggu), localDateRange, localDayOfWeek, overlapSeconds."
   },
   "apps/mobile/app/body-composition/index.tsx": {
-    "summary": "Layar Ringkasan Komposisi (route /body-composition), pintu depan modul komposisi tubuh. Memuat bodyComposition.summary lewat useQuery dengan opsi scenario dari query param (stub-only, ?scenario=empty untuk pratinjau first-run), menangani loading, error, dan stale. Menampilkan judul dan deskripsi, LatestStatusCard untuk sesi terbaru atau LatestStatusEmpty dengan aksi mulai sesi bila belum ada sesi, QuickActions tiga aksi (New session ke /body-composition/new-session, Measurements ke /body-composition/measure, Compare ke /body-composition/compare), dan keterangan jumlah sesi sejak tanggal sesi terlama.",
+    "summary": "Layar Ringkasan Komposisi (route /body-composition), pintu depan modul komposisi tubuh. Memuat bodyComposition.summary lewat useQuery dengan opsi scenario dari query param (stub-only, ?scenario=empty untuk pratinjau first-run), menangani loading, error, dan stale. Menampilkan judul dan deskripsi, LatestStatusCard untuk sesi terbaru atau LatestStatusEmpty dengan aksi mulai sesi bila belum ada sesi, QuickActions tiga aksi (New session ke /body-composition/new-session, Measurements ke /body-composition/measure, Compare ke /body-composition/compare), dan SessionHistoryList yang mendaftar semua sesi dari terbaru ke terlama.",
     "sections": [
       {
         "symbol": "openNewSession, openMeasurements, openComparison, QUICK_ACTIONS",
@@ -1059,8 +1059,8 @@
       {
         "symbol": "BodyCompositionScreen",
         "startLine": 65,
-        "endLine": 137,
-        "summary": "Komponen layar: query stub dengan skenario, state loading dan error, lalu susunan judul, status terakhir atau empty state, aksi cepat, dan keterangan jumlah sesi."
+        "endLine": 131,
+        "summary": "Komponen layar: query stub dengan skenario, state loading dan error, lalu susunan judul, status terakhir atau empty state, aksi cepat, dan riwayat sesi."
       }
     ]
   },
@@ -1074,7 +1074,7 @@
     "summary": "Layar placeholder Compare sessions (route /body-composition/compare) untuk alur fase 3 perbandingan antar-sesi: menjelaskan foto sebelum-sesudah dan tren ukuran, berat, serta estimasi lemak, menampilkan EmptyState bahwa perbandingan belum dibangun, dengan tombol kembali ke ringkasan."
   },
   "apps/mobile/src/components/body-composition.tsx": {
-    "summary": "Komponen UI modul komposisi tubuh. LatestStatusCard menampilkan sesi terbaru dalam satu kartu (tanggal dan berapa hari lalu, BodyFatRange, MeasurementTiles, PhotoStrip) dengan onPress opsional. LatestStatusEmpty adalah first-run state berbasis EmptyState yang menjelaskan isi sebuah sesi dan dapat menawarkan aksi mulai sesi. BodyFatRange merender estimasi lemak hanya sebagai rentang dengan chip metode (Tape formula atau Photo AI) dan chip confidence plus catatan non-medis. MeasurementTiles menampilkan beberapa titik ukur dan berat dengan label aksesibilitas. PhotoStrip menampilkan empat sisi (front, back, left, right) dalam urutan tetap, Image bila ada uri atau placeholder No preview. QuickAction dan QuickActions merender tiga kartu aksi dengan glyph, label, dan hint.",
+    "summary": "Komponen UI modul komposisi tubuh. LatestStatusCard menampilkan sesi terbaru dalam satu kartu (tanggal dan berapa hari lalu, BodyFatRange, MeasurementTiles, PhotoStrip) dengan onPress opsional. LatestStatusEmpty adalah first-run state berbasis EmptyState yang menjelaskan isi sebuah sesi dan dapat menawarkan aksi mulai sesi. BodyFatRange merender estimasi lemak hanya sebagai rentang dengan chip metode (Tape formula atau Photo AI) dan chip confidence plus catatan non-medis. MeasurementTiles menampilkan beberapa titik ukur dan berat dengan label aksesibilitas. PhotoStrip menampilkan empat sisi (front, back, left, right) dalam urutan tetap, Image bila ada uri atau placeholder No preview. QuickAction dan QuickActions merender tiga kartu aksi dengan glyph, label, dan hint. SessionHistoryList mendaftar sesi terbaru ke terlama dalam satu Card berpola baris dan Divider seperti riwayat lain di app: tanggal, ringkasan singkat (waist, berat, jumlah foto) dari describeSession, rentang estimasi dengan metode dan confidence, baris pressable bila onSelect diberikan, plus keterangan jumlah sesi sejak sesi terlama.",
     "sections": [
       {
         "symbol": "LatestStatusCard",
@@ -1111,6 +1111,12 @@
         "startLine": 294,
         "endLine": 340,
         "summary": "Tipe aksi cepat dan baris tiga kartu pressable dengan glyph, label, dan hint."
+      },
+      {
+        "symbol": "describeSession, SessionHistoryList",
+        "startLine": 347,
+        "endLine": 447,
+        "summary": "Ringkasan satu baris per sesi dan daftar riwayat terurut menurun berdasarkan capturedAt dengan baris opsional pressable dan keterangan jumlah sesi."
       }
     ]
   },
