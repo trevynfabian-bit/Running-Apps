@@ -48,6 +48,7 @@ function RootNavigator(): React.ReactElement {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="connections" options={{ title: 'Connected data' }} />
         <Stack.Screen name="workout/[id]" options={{ title: 'Workout' }} />
+        <Stack.Screen name="body-composition/index" options={{ title: 'Body composition' }} />
         <Stack.Screen
           name="why"
           options={{ presentation: 'modal', title: 'Why this recommendation?' }}

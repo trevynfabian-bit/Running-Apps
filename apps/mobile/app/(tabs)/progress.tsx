@@ -10,6 +10,7 @@
 
 import React, { useState } from 'react';
 import { RefreshControl, View } from 'react-native';
+import { router } from 'expo-router';
 
 import { formatDuration, formatPace } from '@running/core';
 
@@ -263,6 +264,28 @@ export default function ProgressScreen(): React.ReactElement {
             </Card>
           </View>
         ) : null}
+
+        {/* Body composition lives on its own screen: photos and tape measurements
+            are a different kind of record from a training trend. */}
+        <View>
+          <SectionHeader title="Body composition" />
+          <Card
+            onPress={() => router.push('/body-composition')}
+            accessibilityLabel="Open body composition"
+          >
+            <Stack direction="row" justify="space-between" align="center" gap={spacing.md}>
+              <Stack gap={2} style={{ flex: 1 }}>
+                <Type variant="bodyStrong">Photos, measurements and body-fat estimate</Type>
+                <Type variant="caption" tone="secondary">
+                  Track how your body is changing, session by session.
+                </Type>
+              </Stack>
+              <Type variant="caption" tone="accent">
+                Open
+              </Type>
+            </Stack>
+          </Card>
+        </View>
 
         {/* Race predictions */}
         {data.racePredictions.length > 0 ? (
