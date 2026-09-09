@@ -13,7 +13,7 @@
  * later phase.
  */
 
-import { and, count, desc, eq, inArray } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, lt, lte } from 'drizzle-orm';
 
 import type {
   BodyCompositionSessionDto,
@@ -24,6 +24,8 @@ import type {
   CompositionMeasurementDto,
   CompositionPhotoDto,
   MeasurementUnitDto,
+  SessionHistoryDto,
+  SessionHistoryQueryDto,
 } from '@running/contracts';
 import {
   BODY_FAT_ESTIMATE_NOTE,
@@ -241,6 +243,24 @@ function toSessionDto(
 // Loading
 // ---------------------------------------------------------------------------
 
+/** Narrowing shared by the history list and its count. */
+interface SessionFilter {
+  /** Only sessions captured strictly before this instant (keyset paging). */
+  before?: Date;
+  /** Inclusive local-date range. */
+  from?: string;
+  to?: string;
+}
+
+function sessionFilter(athleteId: string, filter: SessionFilter) {
+  return and(
+    eq(bodyCompositionSessions.athleteId, athleteId),
+    filter.before ? lt(bodyCompositionSessions.capturedAt, filter.before) : undefined,
+    filter.from ? gte(bodyCompositionSessions.localDate, filter.from) : undefined,
+    filter.to ? lte(bodyCompositionSessions.localDate, filter.to) : undefined,
+  );
+}
+
 /**
  * The session row, provided it belongs to the athlete. Anything else is a
  * plain not-found: a session that is someone else's must look exactly like
@@ -273,7 +293,7 @@ export async function requireOwnedSession(
 export async function loadSessions(
   db: Database,
   athleteId: string,
-  options: { limit?: number; sessionId?: string } = {},
+  options: SessionFilter & { limit?: number; sessionId?: string } = {},
 ): Promise<BodyCompositionSessionDto[]> {
   const context = await loadEstimateContext(db, athleteId);
 
@@ -282,7 +302,7 @@ export async function loadSessions(
     .from(bodyCompositionSessions)
     .where(
       and(
-        eq(bodyCompositionSessions.athleteId, athleteId),
+        sessionFilter(athleteId, options),
         options.sessionId ? eq(bodyCompositionSessions.id, options.sessionId) : undefined,
       ),
     )
@@ -345,6 +365,36 @@ export async function loadSession(
 ): Promise<BodyCompositionSessionDto | undefined> {
   const [session] = await loadSessions(db, athleteId, { sessionId, limit: 1 });
   return session;
+}
+
+/**
+ * The history list: newest first, one page at a time. `nextCursor` is the
+ * capture time of the last session on the page and is only present when a
+ * further page may exist, so the client never needs to guess.
+ */
+export async function listSessions(
+  db: Database,
+  athleteId: string,
+  query: SessionHistoryQueryDto,
+): Promise<SessionHistoryDto> {
+  const filter: SessionFilter = {
+    before: query.before ? new Date(query.before) : undefined,
+    from: query.from,
+    to: query.to,
+  };
+  const sessions = await loadSessions(db, athleteId, { ...filter, limit: query.limit });
+
+  const [totals] = await db
+    .select({ total: count() })
+    .from(bodyCompositionSessions)
+    .where(sessionFilter(athleteId, { from: filter.from, to: filter.to }));
+
+  const last = sessions[sessions.length - 1];
+  return {
+    sessions,
+    total: totals?.total ?? 0,
+    nextCursor: sessions.length === query.limit && last ? last.capturedAt : undefined,
+  };
 }
 
 // ---------------------------------------------------------------------------

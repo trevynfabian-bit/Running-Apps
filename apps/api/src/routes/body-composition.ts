@@ -1,6 +1,6 @@
 /**
  * Body composition routes: the summary the module opens on, sessions, their
- * photos and their tape measurements. History and comparison follow later.
+ * photos, their tape measurements and the history list. Comparison follows.
  *
  * Mounted under `/api/body-composition`, so the app-wide auth boundary in
  * `app.ts` covers every route here; each handler reads the athlete from the
@@ -15,6 +15,7 @@ import {
   API_ERROR_CODES,
   createBodyCompositionSessionSchema,
   saveMeasurementsSchema,
+  sessionHistoryQuerySchema,
 } from '@running/contracts';
 import { isPhotoSide, type PhotoSide } from '@running/core';
 
@@ -23,7 +24,12 @@ import { ApiError, badRequest, notFound } from '../errors.js';
 import type { AuthVariables } from '../security/auth.js';
 import { deleteMeasurement, saveMeasurements } from '../body-composition/measurements.js';
 import { MAX_PHOTO_BYTES, readPhoto, savePhoto } from '../body-composition/photos.js';
-import { buildSummary, createSession, loadSession } from '../body-composition/sessions.js';
+import {
+  buildSummary,
+  createSession,
+  listSessions,
+  loadSession,
+} from '../body-composition/sessions.js';
 
 export const bodyCompositionRoutes = new Hono<{ Variables: AuthVariables }>();
 
@@ -39,6 +45,16 @@ bodyCompositionRoutes.get('/summary', async (c) => {
 // ---------------------------------------------------------------------------
 // Sessions
 // ---------------------------------------------------------------------------
+
+/**
+ * Session history, newest first, in pages. `limit` caps the page, `before`
+ * pages further back, `from` and `to` narrow to a local-date range.
+ */
+bodyCompositionRoutes.get('/sessions', async (c) => {
+  const query = sessionHistoryQuerySchema.parse(c.req.query());
+  const { db } = await getDb();
+  return c.json(await listSessions(db, c.get('athleteId'), query));
+});
 
 /** Start a session. An empty body is fine: it means "now". */
 bodyCompositionRoutes.post('/sessions', async (c) => {

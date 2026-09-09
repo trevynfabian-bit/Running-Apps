@@ -860,6 +860,29 @@ export const saveMeasurementsSchema = z.object({
 });
 export type SaveMeasurementsDto = z.infer<typeof saveMeasurementsSchema>;
 
+/**
+ * History query. Newest first, like the workout history. `before` is the
+ * capture time of the last session already shown and pages further back;
+ * `from` and `to` narrow to a range of local dates, inclusive.
+ */
+export const sessionHistoryQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  before: isoDateTime.optional(),
+  from: localDate.optional(),
+  to: localDate.optional(),
+});
+export type SessionHistoryQueryDto = z.infer<typeof sessionHistoryQuerySchema>;
+
+export const sessionHistorySchema = z.object({
+  /** One page, newest first. */
+  sessions: z.array(bodyCompositionSessionSchema),
+  /** Sessions matching the date range, across all pages. */
+  total: z.number().int(),
+  /** Pass back as `before` for the next page; absent on the last page. */
+  nextCursor: isoDateTime.optional(),
+});
+export type SessionHistoryDto = z.infer<typeof sessionHistorySchema>;
+
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
