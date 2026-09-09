@@ -21,6 +21,8 @@ const envSchema = z.object({
 
   DATABASE_URL: z.string().optional(),
   PGLITE_DIR: z.string().default('.data/pglite'),
+  /** Where body composition photos are written. A persistent volume in production. */
+  BODY_PHOTO_DIR: z.string().default('.data/body-photos'),
 
   AUTH_JWT_SECRET: z.string().optional(),
   TOKEN_ENCRYPTION_KEY: z.string().optional(),

@@ -13,11 +13,12 @@
  * later phase.
  */
 
-import { count, desc, eq, inArray } from 'drizzle-orm';
+import { and, count, desc, eq, inArray } from 'drizzle-orm';
 
 import type {
   BodyCompositionSessionDto,
   BodyCompositionSummaryDto,
+  CreateBodyCompositionSessionDto,
   BodyFatEstimateDto,
   CircumferencePointDto,
   CompositionMeasurementDto,
@@ -31,6 +32,7 @@ import {
   isCircumferencePointCode,
   isMeasurementUnit,
   isPhotoSide,
+  toLocalDate,
   type BiologicalSex,
   type BodyFatEstimate,
   type CircumferencePointCode,
@@ -138,11 +140,17 @@ function nearestWeight(rows: readonly BodyMetricRow[], at: Date): number | undef
 // Session shaping
 // ---------------------------------------------------------------------------
 
-function toPhotoDto(row: PhotoRow): CompositionPhotoDto | undefined {
+/** Where the app fetches the bytes; served by the photo route, owner only. */
+export function photoUrl(sessionId: string, side: string): string {
+  return `/api/body-composition/sessions/${sessionId}/photos/${side}`;
+}
+
+export function toPhotoDto(row: PhotoRow): CompositionPhotoDto | undefined {
   if (!isPhotoSide(row.side)) return undefined;
   return {
     id: row.id,
     side: row.side,
+    url: photoUrl(row.sessionId, row.side),
     capturedAt: row.capturedAt.toISOString(),
     contentType: row.contentType ?? undefined,
     widthPx: row.widthPx ?? undefined,
@@ -241,14 +249,19 @@ function toSessionDto(
 export async function loadSessions(
   db: Database,
   athleteId: string,
-  options: { limit?: number } = {},
+  options: { limit?: number; sessionId?: string } = {},
 ): Promise<BodyCompositionSessionDto[]> {
   const context = await loadEstimateContext(db, athleteId);
 
   const query = db
     .select()
     .from(bodyCompositionSessions)
-    .where(eq(bodyCompositionSessions.athleteId, athleteId))
+    .where(
+      and(
+        eq(bodyCompositionSessions.athleteId, athleteId),
+        options.sessionId ? eq(bodyCompositionSessions.id, options.sessionId) : undefined,
+      ),
+    )
     .orderBy(desc(bodyCompositionSessions.capturedAt), desc(bodyCompositionSessions.createdAt));
   const rows = options.limit === undefined ? await query : await query.limit(options.limit);
   if (rows.length === 0) return [];
@@ -298,4 +311,53 @@ export async function buildSummary(
     sessionCount: totals?.total ?? 0,
     note: BODY_FAT_ESTIMATE_NOTE,
   };
+}
+
+/** One session, or undefined when it does not exist or belongs to someone else. */
+export async function loadSession(
+  db: Database,
+  athleteId: string,
+  sessionId: string,
+): Promise<BodyCompositionSessionDto | undefined> {
+  const [session] = await loadSessions(db, athleteId, { sessionId, limit: 1 });
+  return session;
+}
+
+// ---------------------------------------------------------------------------
+// Creating
+// ---------------------------------------------------------------------------
+
+/**
+ * Start a session. Photos and measurements attach to it afterwards, side by
+ * side and point by point, so the athlete can retake one side without
+ * starting over. The local date comes from the profile's timezone, like a
+ * training day.
+ */
+export async function createSession(
+  db: Database,
+  athleteId: string,
+  input: CreateBodyCompositionSessionDto,
+): Promise<BodyCompositionSessionDto> {
+  const [profile] = await db
+    .select({ timezone: athleteProfiles.timezone })
+    .from(athleteProfiles)
+    .where(eq(athleteProfiles.id, athleteId))
+    .limit(1);
+  if (!profile) throw notFound('Athlete');
+
+  const capturedAt = input.capturedAt ? new Date(input.capturedAt) : new Date();
+  const [row] = await db
+    .insert(bodyCompositionSessions)
+    .values({
+      athleteId,
+      capturedAt,
+      localDate: toLocalDate(capturedAt, profile.timezone || 'UTC'),
+      weightKilograms: input.weightKilograms,
+      note: input.note,
+    })
+    .returning();
+
+  const session = await loadSession(db, athleteId, row!.id);
+  if (!session) throw notFound('Session');
+  return session;
 }

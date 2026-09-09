@@ -45,13 +45,14 @@ accepting unverified payloads.
 
 ## Development vs production
 
-| Variable | Development | Production |
-|---|---|---|
-| `DATABASE_URL` | empty → PGlite | required |
-| `USE_MOCK_DATA` | `true` | `false` |
-| `AUTH_JWT_SECRET` | derived fallback | required, 32+ chars |
-| `TOKEN_ENCRYPTION_KEY` | derived fallback | required, 64 hex |
-| `AI_API_KEY` | optional | optional |
+| Variable               | Development         | Production          |
+| ---------------------- | ------------------- | ------------------- |
+| `DATABASE_URL`         | empty → PGlite      | required            |
+| `USE_MOCK_DATA`        | `true`              | `false`             |
+| `AUTH_JWT_SECRET`      | derived fallback    | required, 32+ chars |
+| `TOKEN_ENCRYPTION_KEY` | derived fallback    | required, 64 hex    |
+| `BODY_PHOTO_DIR`       | `.data/body-photos` | persistent volume   |
+| `AI_API_KEY`           | optional            | optional            |
 
 `AI_API_KEY` is genuinely optional everywhere. Without it the coach answers
 from the deterministic responder and says so in the UI. Training decisions

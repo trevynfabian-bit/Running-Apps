@@ -65,7 +65,7 @@
     ]
   },
   "apps/api/src/env.ts": {
-    "summary": "Konfigurasi environment yang divalidasi zod sekali saat boot: NODE_ENV, API_PORT, API_PUBLIC_URL, DATABASE_URL, PGLITE_DIR, AUTH_JWT_SECRET, TOKEN_ENCRYPTION_KEY, USE_MOCK_DATA, kredensial Strava dan WHOOP (client id, client secret, redirect uri, webhook verify token atau secret), serta AI_API_KEY, AI_MODEL, AI_BASE_URL. loadEnv menghitung flag stravaConfigured, whoopConfigured, aiConfigured dan menolak start di production tanpa JWT secret minimal 32 karakter, encryption key 64 hex, dan DATABASE_URL. env() meng-cache hasil; setEnvForTesting mengganti cache untuk test."
+    "summary": "Konfigurasi environment yang divalidasi zod sekali saat boot: NODE_ENV, API_PORT, API_PUBLIC_URL, DATABASE_URL, PGLITE_DIR, BODY_PHOTO_DIR (direktori penyimpanan foto komposisi tubuh, default .data/body-photos, volume persisten di produksi), AUTH_JWT_SECRET, TOKEN_ENCRYPTION_KEY, USE_MOCK_DATA, kredensial Strava dan WHOOP (client id, client secret, redirect uri, webhook verify token atau secret), serta AI_API_KEY, AI_MODEL, AI_BASE_URL. loadEnv menghitung flag stravaConfigured, whoopConfigured, aiConfigured dan menolak start di production tanpa JWT secret minimal 32 karakter, encryption key 64 hex, dan DATABASE_URL. env() meng-cache hasil; setEnvForTesting mengganti cache untuk test."
   },
   "apps/api/src/errors.ts": {
     "summary": "Kelas ApiError (status HTTP, code dari API_ERROR_CODES, pesan yang aman ditampilkan ke atlet, details opsional) dengan toBody untuk envelope error, plus helper pembuat error: notFound (404), badRequest (400 validation_failed), providerNotConnected (409), providerUnavailable (503), tokenExpired (401)."
@@ -611,10 +611,10 @@
     "summary": "Dokumentasi setiap rumus mesin coaching dan batasannya: model training load (trimp_hr, hr_zone, srpe, duration) dengan TRIMP Banister dan koefisien per jenis kelamin, ACWR yang sengaja di-de-emphasis, monotony dan strain Foster; estimasi fitness Riegel dan VDOT Daniels-Gilbert dengan gating, pembobotan recency dan sumber, serta tabel confidence; metodologi zona (max_hr_percent, hr_reserve, threshold_hr, pace) dan Tanaka untuk max HR; efficiency factor dan aerobic decoupling dengan gate validitas; komponen recovery komposit beserta bobot dan band; hierarki dan tabel skor decision engine; prinsip plan generation; tabel training state; dan prinsip confidence di semua estimasi."
   },
   "docs/DATA_MODEL.md": {
-    "summary": "Dokumentasi data model PostgreSQL: konvensi (timestamptz UTC, date lokal atlet, payload raw disimpan, unique constraint untuk idempotensi), tabel identitas, provider_connections dengan token terenkripsi dan sync_cursor, tabel raw provider dengan unique (connection_id, external_id), canonical_workouts dan workout_sources (PK gabungan dan unique provider plus external_id), planning, derived daily state unik per (athlete_id, date), coach_memory dengan jenis stated_preference, observed_pattern, temporary_condition, bagian komposisi tubuh (body_composition_sessions sebagai unit riwayat dan penghapusan, composition_photos di object storage unik per sisi, composition_measurements dengan value, unit, dan value_cm kanonis unik per titik, circumference_points di-seed dari @running/core saat migrasi dan tidak bisa dihapus bila masih dirujuk), operasional (sync_jobs, sync_events, audit_logs), kebijakan deletion per provider, catatan RLS belum aktif beserta contoh policy, dan perintah migrasi drizzle-kit."
+    "summary": "Dokumentasi data model PostgreSQL: konvensi (timestamptz UTC, date lokal atlet, payload raw disimpan, unique constraint untuk idempotensi), tabel identitas, provider_connections dengan token terenkripsi dan sync_cursor, tabel raw provider dengan unique (connection_id, external_id), canonical_workouts dan workout_sources (PK gabungan dan unique provider plus external_id), planning, derived daily state unik per (athlete_id, date), coach_memory dengan jenis stated_preference, observed_pattern, temporary_condition, bagian komposisi tubuh (body_composition_sessions sebagai unit riwayat dan penghapusan, byte foto di photo store BODY_PHOTO_DIR di luar database dengan storage_key di baris composition_photos unik per sisi sehingga retake mengganti, composition_measurements dengan value, unit, dan value_cm kanonis unik per titik, circumference_points di-seed dari @running/core saat migrasi dan tidak bisa dihapus bila masih dirujuk), operasional (sync_jobs, sync_events, audit_logs), kebijakan deletion per provider, catatan RLS belum aktif beserta contoh policy, dan perintah migrasi drizzle-kit."
   },
   "docs/ENVIRONMENT.md": {
-    "summary": "Dokumentasi environment: batas secret backend-only (client secret Strava dan WHOOP, DATABASE_URL, AUTH_JWT_SECRET, TOKEN_ENCRYPTION_KEY, AI_API_KEY, webhook secret) versus variabel EXPO_PUBLIC_ yang tertanam di binary app, cara membuat secret dengan openssl, penolakan default tidak aman di production oleh loadEnv, tabel development vs production, redaksi logger, dan checklist deployment."
+    "summary": "Dokumentasi environment: batas secret backend-only (client secret Strava dan WHOOP, DATABASE_URL, AUTH_JWT_SECRET, TOKEN_ENCRYPTION_KEY, AI_API_KEY, webhook secret) versus variabel EXPO_PUBLIC_ yang tertanam di binary app, cara membuat secret dengan openssl, penolakan default tidak aman di production oleh loadEnv, tabel development vs production termasuk BODY_PHOTO_DIR (default .data/body-photos, volume persisten di produksi), redaksi logger, dan checklist deployment."
   },
   "docs/INTEGRATIONS.md": {
     "summary": "Panduan integrasi provider: mock mode; Strava (setup aplikasi, endpoint authorize, token, revoke, dan perubahan endpoint deauthorization 2026 ke 2027, scopes read, activity:read_all, profile:read_all, registrasi webhook push_subscriptions dan challenge, rate limit dari header); WHOOP v2 (setup, endpoint dari snapshot OpenAPI, scopes termasuk offline, perbedaan v1 ke v2 seperti id UUID dan score_state, verifikasi HMAC webhook); Apple Health atau HealthKit (tanpa API server, ingest dari iOS, prebuild dan config plugin, izin baca tidak bisa diintrospeksi, tipe yang dibaca); serta langkah menambah provider baru lewat FitnessDataProvider dan registry."
@@ -632,7 +632,7 @@
     "summary": "Konfigurasi build packages/contracts: extends tsconfig.json dengan noEmit false agar menghasilkan output, exclude file test dan __fixtures__."
   },
   "packages/contracts/src/index.ts": {
-    "summary": "Kontrak wire antara app mobile dan API sebagai skema Zod (sumber kebenaran tunggal) beserta tipe turunannya. Primitif: isoDateTime, localDate, providerIdSchema, confidenceSchema, workoutTypeSchema, sportTypeSchema, decisionTypeSchema, trainingStateSchema, recoveryBandSchema. Atlet: availabilitySchema, constraintsSchema, backgroundSchema, preferencesSchema, athleteProfileSchema, updateAthleteProfileSchema. Workout: workoutSourceRefSchema, workoutSummarySchema, workoutAnalysisSchema, workoutDetailSchema, createManualWorkoutSchema. Plan: intensityTargetSchema, workoutStepSchema, workoutStructureSchema, plannedWorkoutSchema, trainingBlockSchema, trainingPlanSchema, planWeekSchema, generatePlanSchema. Recovery: checkInSchema, recoveryStateSchema. Coaching: reasonSchema, coachDecisionSchema. dashboardSchema. Progress: trendSchema, seriesPointSchema, progressSchema. Koneksi: connectionStatusSchema, connectionSchema, syncResultSchema. AI coach: coachMessageSchema, claimKindSchema, coachResponseSchema. Race: createRaceGoalSchema, raceGoalSchema. weeklyReviewSchema. Komposisi tubuh: photoSideSchema, measurementUnitSchema, bodyFatMethodSchema, bodyFatFormulaSchema, aiServiceStatusSchema, circumferencePointSchema, compositionPhotoSchema, compositionMeasurementSchema (nilai masukan plus valueCm kanonis), bodyFatEstimateSchema (selalu rentang dengan confidence, alasan, input, langkah, dan catatan non-medis), formulaRequirementSchema, bodyCompositionSessionSchema, bodyCompositionSummarySchema. Auth: signUpSchema (password minimal 10 karakter), signInSchema, authResponseSchema. Error: apiErrorSchema dan konstanta API_ERROR_CODES (unauthorized, forbidden, not_found, validation_failed, provider_unavailable, provider_not_connected, token_expired, rate_limited, conflict, internal_error).",
+    "summary": "Kontrak wire antara app mobile dan API sebagai skema Zod (sumber kebenaran tunggal) beserta tipe turunannya. Primitif: isoDateTime, localDate, providerIdSchema, confidenceSchema, workoutTypeSchema, sportTypeSchema, decisionTypeSchema, trainingStateSchema, recoveryBandSchema. Atlet: availabilitySchema, constraintsSchema, backgroundSchema, preferencesSchema, athleteProfileSchema, updateAthleteProfileSchema. Workout: workoutSourceRefSchema, workoutSummarySchema, workoutAnalysisSchema, workoutDetailSchema, createManualWorkoutSchema. Plan: intensityTargetSchema, workoutStepSchema, workoutStructureSchema, plannedWorkoutSchema, trainingBlockSchema, trainingPlanSchema, planWeekSchema, generatePlanSchema. Recovery: checkInSchema, recoveryStateSchema. Coaching: reasonSchema, coachDecisionSchema. dashboardSchema. Progress: trendSchema, seriesPointSchema, progressSchema. Koneksi: connectionStatusSchema, connectionSchema, syncResultSchema. AI coach: coachMessageSchema, claimKindSchema, coachResponseSchema. Race: createRaceGoalSchema, raceGoalSchema. weeklyReviewSchema. Komposisi tubuh: photoSideSchema, measurementUnitSchema, bodyFatMethodSchema, bodyFatFormulaSchema, aiServiceStatusSchema, circumferencePointSchema, compositionPhotoSchema (dengan url path API foto), compositionMeasurementSchema (nilai masukan plus valueCm kanonis), bodyFatEstimateSchema (selalu rentang dengan confidence, alasan, input, langkah, dan catatan non-medis), formulaRequirementSchema, bodyCompositionSessionSchema, bodyCompositionSummarySchema, createBodyCompositionSessionSchema (capturedAt, weightKilograms, note opsional). Auth: signUpSchema (password minimal 10 karakter), signInSchema, authResponseSchema. Error: apiErrorSchema dan konstanta API_ERROR_CODES (unauthorized, forbidden, not_found, validation_failed, provider_unavailable, provider_not_connected, token_expired, rate_limited, conflict, internal_error).",
     "sections": [
       {
         "symbol": "primitives",
@@ -709,19 +709,19 @@
       {
         "symbol": "body composition schemas",
         "startLine": 728,
-        "endLine": 832,
-        "summary": "Sisi foto, satuan, metode dan rumus body fat, status layanan AI, titik lingkar, foto, ukuran dengan valueCm, estimasi sebagai rentang berlabel dengan langkah, kebutuhan rumus, sesi, dan ringkasan dengan defaultUnit, latest, sessions, sessionCount, note."
+        "endLine": 842,
+        "summary": "Sisi foto, satuan, metode dan rumus body fat, status layanan AI, titik lingkar, foto dengan url, ukuran dengan valueCm, estimasi sebagai rentang berlabel dengan langkah, kebutuhan rumus, sesi, ringkasan, dan input pembuatan sesi."
       },
       {
         "symbol": "auth schemas",
-        "startLine": 837,
-        "endLine": 856,
+        "startLine": 847,
+        "endLine": 866,
         "summary": "Sign up, sign in, dan respons auth dengan token."
       },
       {
         "symbol": "apiErrorSchema, API_ERROR_CODES",
-        "startLine": 866,
-        "endLine": 888,
+        "startLine": 876,
+        "endLine": 898,
         "summary": "Envelope error seragam dan kode error stabil."
       }
     ]
@@ -1295,30 +1295,50 @@
     ]
   },
   "apps/api/src/body-composition/sessions.ts": {
-    "summary": "Layanan pembentukan sesi komposisi tubuh untuk API. loadCircumferenceCatalog membaca katalog titik pita terurut sortOrder; defaultUnitFor memetakan preferensi satuan atlet (imperial ke in, selain itu cm). loadEstimateContext memuat profil (sex) dan riwayat body_measurements atlet, mengambil tinggi terbaru (height_m dikali 100) yang berlaku untuk semua sesi. nearestWeight memilih berat tercatat terdekat dalam jendela 14 hari untuk sesi yang tidak menyimpan berat sendiri. toSessionDto merangkai satu sesi: foto diurutkan front, back, left, right (baris dengan sisi tak dikenal dilewati), ukuran diberi label dari katalog dan diurutkan sortOrder, peta lingkar kanonis cm per kode titik, lalu estimateBodyFat dari @running/core dijalankan saat baca (bukan disimpan) sehingga koreksi ukuran langsung mengubah estimasi; estimasi diberi id turunan sessionId plus rumus dan daftar kebutuhan rumus yang belum bisa jalan ikut dikembalikan. loadSessions memuat sesi milik satu atlet terbaru dahulu dengan limit opsional, mengambil foto dan ukuran lewat inArray id sesi milik atlet tersebut. buildSummary menyusun payload ringkasan: defaultUnit, points, latest, sessions dibatasi SUMMARY_SESSION_LIMIT (12), sessionCount total, dan catatan non-medis.",
+    "summary": "Layanan sesi komposisi tubuh untuk API: pembacaan dan pembuatan. loadCircumferenceCatalog membaca katalog titik pita terurut sortOrder; defaultUnitFor memetakan preferensi satuan atlet (imperial ke in, selain itu cm). loadEstimateContext memuat profil (sex) dan riwayat body_measurements, mengambil tinggi terbaru (height_m dikali 100) yang berlaku untuk semua sesi; nearestWeight memilih berat tercatat terdekat dalam jendela 14 hari untuk sesi tanpa berat sendiri. photoUrl membentuk path API foto per sesi dan sisi; toPhotoDto (diekspor, dipakai photos.ts) menyertakan url, dimensi, dan content type. toSessionDto merangkai satu sesi: foto diurutkan front, back, left, right, ukuran diberi label katalog dan diurutkan sortOrder, peta lingkar kanonis cm, lalu estimateBodyFat dari @running/core dijalankan saat baca (bukan disimpan) dengan id estimasi turunan dan daftar kebutuhan rumus. loadSessions memuat sesi milik satu atlet terbaru dahulu dengan limit dan filter sessionId opsional; loadSession mengembalikan satu sesi atau undefined bila tidak ada atau milik orang lain; buildSummary menyusun payload ringkasan (defaultUnit, points, latest, sessions dibatasi SUMMARY_SESSION_LIMIT 12, sessionCount, note). createSession memulai sesi dengan capturedAt (default sekarang), localDate dari zona waktu profil, berat dan catatan opsional, lalu mengembalikan DTO sesi lengkap.",
     "sections": [
       {
         "symbol": "loadCircumferenceCatalog, defaultUnitFor, loadEstimateContext, nearestWeight",
-        "startLine": 70,
-        "endLine": 135,
+        "startLine": 72,
+        "endLine": 137,
         "summary": "Katalog titik, satuan default dari preferensi, konteks estimasi (sex, tinggi terbaru, riwayat berat), dan pemilihan berat terdekat dalam 14 hari."
       },
       {
-        "symbol": "toPhotoDto, toMeasurementDto, toEstimateDto, toSessionDto",
-        "startLine": 138,
-        "endLine": 230,
-        "summary": "Pemetaan baris ke DTO: foto terurut sisi, ukuran berlabel katalog, estimasi turunan dari engine core dengan id stabil per sesi dan rumus."
+        "symbol": "photoUrl, toPhotoDto, toMeasurementDto, toEstimateDto, toSessionDto",
+        "startLine": 140,
+        "endLine": 238,
+        "summary": "Pemetaan baris ke DTO: url dan metadata foto terurut sisi, ukuran berlabel katalog, estimasi turunan dari engine core dengan id stabil per sesi dan rumus."
       },
       {
-        "symbol": "loadSessions, buildSummary",
-        "startLine": 233,
-        "endLine": 301,
-        "summary": "Pemuatan sesi per atlet terbaru dahulu beserta anak-anaknya, dan perakitan payload ringkasan dengan batas 12 sesi serta jumlah total."
+        "symbol": "loadSessions, buildSummary, loadSession",
+        "startLine": 241,
+        "endLine": 324,
+        "summary": "Pemuatan sesi per atlet terbaru dahulu beserta anak-anaknya, payload ringkasan, dan pembacaan satu sesi milik atlet."
+      },
+      {
+        "symbol": "createSession",
+        "startLine": 327,
+        "endLine": 363,
+        "summary": "Memulai sesi baru dengan waktu tangkap, tanggal lokal dari zona waktu profil, berat dan catatan opsional."
       }
     ]
   },
   "apps/api/src/routes/body-composition.ts": {
-    "summary": "Router Hono modul komposisi tubuh yang di-mount di /api/body-composition sehingga tercakup batas autentikasi terpusat di app.ts. Saat ini satu endpoint: GET /summary yang memanggil buildSummary untuk atlet dari token terverifikasi dan mengembalikan katalog titik pita, satuan default, sesi terakhir lengkap, sesi terbaru, jumlah sesi, dan catatan non-medis. Endpoint sesi, foto, ukuran, dan perbandingan menyusul di fase berikutnya."
+    "summary": "Router Hono modul komposisi tubuh yang di-mount di /api/body-composition sehingga tercakup batas autentikasi terpusat; atlet selalu diambil dari token dan sesi milik orang lain tidak dibedakan dari yang tidak ada (404). GET /summary memanggil buildSummary. POST /sessions memvalidasi body dengan createBodyCompositionSessionSchema (body kosong berarti sekarang) dan mengembalikan 201 dengan DTO sesi. GET /sessions/:id mengembalikan satu sesi lengkap. PUT /sessions/:id/photos/:side menyimpan atau mengganti foto satu sisi: sisi divalidasi (front, back, left, right), batas 10 MB lewat bodyLimit dengan respons 413 beretiket validation_failed, menerima multipart dengan field photo dan capturedAt opsional atau byte mentah dengan capturedAt di query, capturedAt tak valid ditolak 400, lalu savePhoto. GET /sessions/:id/photos/:side melayani byte foto ke pemilik dengan content-type, content-length, dan cache-control private no-store.",
+    "sections": [
+      {
+        "symbol": "GET /summary, POST /sessions, GET /sessions/:id",
+        "startLine": 29,
+        "endLine": 52,
+        "summary": "Ringkasan modul, pembuatan sesi dengan validasi kontrak, dan detail sesi."
+      },
+      {
+        "symbol": "PUT /sessions/:id/photos/:side, GET /sessions/:id/photos/:side",
+        "startLine": 55,
+        "endLine": 128,
+        "summary": "Unggah foto per sisi (multipart atau raw, batas 10 MB, capturedAt opsional) dan pelayanan byte foto tanpa cache."
+      }
+    ]
   },
   "apps/api/src/body-composition/summary.test.ts": {
     "summary": "Test endpoint GET /api/body-composition/summary terhadap PGlite in-memory dengan migrasi dan autentikasi nyata; sesi disisipkan langsung ke database karena endpoint tulis belum ada. Memverifikasi: 401 tanpa token; respons awal lolos bodyCompositionSummarySchema dengan defaultUnit cm, delapan titik katalog berurutan dengan teks panduan, tanpa sesi, sessionCount 0, dan catatan non-medis; sesi terakhir menampilkan foto terurut front, back, left, right meski disisipkan acak, ukuran berlabel dan terurut katalog, kedua estimasi rumus (us_navy lalu ymca) berupa rentang dengan alasan dan langkah, berat sesi mengalahkan berat tercatat, sedangkan sesi lama tanpa leher melaporkan kebutuhan Neck untuk Navy dan meminjam berat tercatat dalam 14 hari untuk YMCA; defaultUnit mengikuti preferensi imperial; daftar sesi dibatasi SUMMARY_SESSION_LIMIT namun sessionCount tetap total; atlet lain tidak melihat sesi atlet pertama.",
@@ -1334,6 +1354,63 @@
         "startLine": 144,
         "endLine": 282,
         "summary": "Kasus autentikasi, keadaan kosong, sesi terakhir lengkap, preferensi satuan, batas jumlah sesi, dan isolasi antar atlet."
+      }
+    ]
+  },
+  "apps/api/src/body-composition/photo-store.ts": {
+    "summary": "Penyimpanan byte foto komposisi tubuh di luar database. inspectImage mengenali gambar dari magic bytes (bukan dari content-type yang dikirim klien): JPEG, PNG, WebP, HEIC; membaca dimensi dari header untuk JPEG (menelusuri segmen sampai start-of-frame), PNG (chunk IHDR), dan WebP (chunk VP8, VP8L, VP8X), sedangkan HEIC hanya dikenali tanpa dimensi; selain itu ditolak sebelum masuk penyimpanan. Antarmuka PhotoStore (put, get, remove) dengan implementasi LocalPhotoStore berbasis filesystem di bawah root BODY_PHOTO_DIR: kunci dipilih pemanggil dan diberi lingkup atlet, kunci yang keluar dari root ditolak, penulisan lewat file sementara lalu rename agar pembaca tidak pernah melihat file parsial, get mengembalikan undefined bila tidak ada, remove bersifat force. getPhotoStore menyediakan singleton per proses dan setPhotoStoreForTesting menggantinya untuk test. Implementasi object store (S3, R2, Supabase Storage) bisa dipasang di balik antarmuka yang sama.",
+    "sections": [
+      {
+        "symbol": "inspectImage, jpegDimensions, webpDimensions",
+        "startLine": 23,
+        "endLine": 121,
+        "summary": "Identifikasi format gambar dari byte dan pembacaan dimensi murah untuk JPEG, PNG, dan WebP."
+      },
+      {
+        "symbol": "PhotoStore, LocalPhotoStore, getPhotoStore",
+        "startLine": 124,
+        "endLine": 181,
+        "summary": "Antarmuka penyimpanan dan implementasi filesystem dengan kunci terbatas root, penulisan atomik, serta singleton dan hook test."
+      }
+    ]
+  },
+  "apps/api/src/body-composition/photos.ts": {
+    "summary": "Logika foto sesi: satu foto per sisi dan bisa diganti (retake). MAX_PHOTO_BYTES 10 MB dan pesan NOT_A_PHOTO_MESSAGE. ownedSession memastikan sesi ada dan milik atlet, selain itu notFound. savePhoto menolak byte kosong dan file yang bukan gambar (inspectImage), menyusun storageKey athletes/atlet/sessions/sesi/sisi.ekstensi, menulis byte ke PhotoStore, lalu upsert baris composition_photos pada konflik (sessionId, side) dengan contentType, byteSize, dimensi, dan capturedAt (default waktu sesi); file lama dihapus hanya setelah file baru tersimpan bila kuncinya berbeda karena ganti format. readPhoto membaca baris milik atlet untuk sesi dan sisi tertentu lalu mengambil byte dari store, mengembalikan undefined bila tidak ada.",
+    "sections": [
+      {
+        "symbol": "savePhoto",
+        "startLine": 46,
+        "endLine": 97,
+        "summary": "Validasi kepemilikan dan gambar, tulis ke store, upsert baris per sisi, hapus file lama setelah yang baru aman."
+      },
+      {
+        "symbol": "readPhoto",
+        "startLine": 99,
+        "endLine": 121,
+        "summary": "Ambil byte dan content type foto satu sisi milik atlet."
+      }
+    ]
+  },
+  "apps/api/src/body-composition/photos.test.ts": {
+    "summary": "Test pembuatan sesi dan unggah foto terhadap PGlite in-memory dan direktori foto sementara. Membangun byte JPEG dan PNG mini buatan tangan (header dengan dimensi). POST sessions: sesi dengan capturedAt zona Jakarta mendapat localDate hari lokal meski masih hari sebelumnya di UTC, tanpa foto, ukuran, dan estimasi, serta daftar kebutuhan kedua rumus; body kosong berarti sekarang; berat negatif ditolak 400. PUT dan GET foto: unggah multipart membaca dimensi dari byte dan menulis file front.png di direktori atlet dan sesi; unggah ulang sisi yang sama adalah retake dengan id baris tetap, format berganti ke JPEG, file PNG lama dihapus, dan sesi tetap punya satu foto sisi itu; byte dilayani kembali ke pemilik dengan content-type dan cache-control private no-store; capturedAt bisa dikirim bersama unggahan dan nilai tak valid ditolak; empat sisi tampil berurutan front, back, left, right di detail sesi dan ringkasan; teks, body kosong, sisi tak dikenal, dan form tanpa field photo ditolak 400; file di atas 10 MB ditolak 413; atlet lain dan sesi tak dikenal mendapat 404.",
+    "sections": [
+      {
+        "symbol": "pngBytes, jpegBytes, putRaw, putMultipart",
+        "startLine": 37,
+        "endLine": 234,
+        "summary": "Harness dan fixture: pendaftaran, pemanggil terautentikasi, pembuatan sesi, byte gambar mini, dan helper unggah raw serta multipart."
+      },
+      {
+        "symbol": "describe POST sessions",
+        "startLine": 236,
+        "endLine": 273,
+        "summary": "Pembuatan sesi dengan zona waktu, body kosong, dan validasi."
+      },
+      {
+        "symbol": "describe PUT and GET photos",
+        "startLine": 275,
+        "endLine": 408,
+        "summary": "Unggah, retake, pelayanan byte, capturedAt, urutan sisi, penolakan input buruk, batas ukuran, dan isolasi antar atlet."
       }
     ]
   }

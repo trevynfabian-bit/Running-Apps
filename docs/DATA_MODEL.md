@@ -94,9 +94,12 @@ one unusual week must not become a permanent belief about how they train.
 with `circumference_points` as a reference catalog.
 
 A session is the unit of history, comparison and deletion: the four-sided
-portrait and the tape measurements taken together. Photos are stored in object
-storage; the row holds `storage_key` plus metadata, and `UNIQUE (session_id,
-side)` keeps one photo per side. Measurements are `UNIQUE (session_id,
+A session is the unit of history, comparison and deletion: the four-sided
+portrait and the tape measurements taken together. Photo bytes live outside
+the database in the photo store (`BODY_PHOTO_DIR` on disk, an object store
+behind the same interface later); the row holds `storage_key` plus metadata,
+and `UNIQUE (session_id, side)` keeps one photo per side, so a retake replaces
+rather than adds. Measurements are `UNIQUE (session_id,
 point_id)`, so correcting a reading updates it rather than adding a second.
 `value` and `unit` are what the athlete entered; `value_cm` is the canonical
 form calculations read, the same original/normalised split as provider data.

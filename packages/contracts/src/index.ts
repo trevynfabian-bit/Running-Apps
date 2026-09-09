@@ -749,6 +749,8 @@ export type CircumferencePointDto = z.infer<typeof circumferencePointSchema>;
 export const compositionPhotoSchema = z.object({
   id: z.string(),
   side: photoSideSchema,
+  /** API path that serves the bytes to the owner; send the bearer token with it. */
+  url: z.string(),
   capturedAt: isoDateTime,
   contentType: z.string().optional(),
   widthPx: z.number().int().optional(),
@@ -829,6 +831,14 @@ export const bodyCompositionSummarySchema = z.object({
   note: z.string(),
 });
 export type BodyCompositionSummaryDto = z.infer<typeof bodyCompositionSummarySchema>;
+
+/** Start a session; photos and measurements attach afterwards. Empty means "now". */
+export const createBodyCompositionSessionSchema = z.object({
+  capturedAt: isoDateTime.optional(),
+  weightKilograms: z.number().positive().max(400).optional(),
+  note: z.string().max(500).optional(),
+});
+export type CreateBodyCompositionSessionDto = z.infer<typeof createBodyCompositionSessionSchema>;
 
 // ---------------------------------------------------------------------------
 // Auth
