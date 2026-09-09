@@ -635,9 +635,7 @@ export const coachResponseSchema = z.object({
    * Statements tagged by epistemic status, so the UI can visually separate a
    * measurement from an inference.
    */
-  claims: z
-    .array(z.object({ kind: claimKindSchema, text: z.string() }))
-    .optional(),
+  claims: z.array(z.object({ kind: claimKindSchema, text: z.string() })).optional(),
   keyMetrics: z
     .array(z.object({ label: z.string(), value: z.string(), context: z.string().optional() }))
     .optional(),
@@ -722,6 +720,115 @@ export const weeklyReviewSchema = z.object({
   nextWeekPriority: z.string(),
 });
 export type WeeklyReviewDto = z.infer<typeof weeklyReviewSchema>;
+
+// ---------------------------------------------------------------------------
+// Body composition
+// ---------------------------------------------------------------------------
+
+export const photoSideSchema = z.enum(['front', 'back', 'left', 'right']);
+export type PhotoSideDto = z.infer<typeof photoSideSchema>;
+
+export const measurementUnitSchema = z.enum(['cm', 'in']);
+export type MeasurementUnitDto = z.infer<typeof measurementUnitSchema>;
+
+export const bodyFatMethodSchema = z.enum(['formula', 'ai']);
+export const bodyFatFormulaSchema = z.enum(['us_navy', 'ymca']);
+export const aiServiceStatusSchema = z.enum(['active', 'unavailable', 'failed']);
+
+export const circumferencePointSchema = z.object({
+  id: z.string(),
+  /** Stable code, e.g. `waist`, `left_arm`. */
+  code: z.string(),
+  label: z.string(),
+  /** Where to put the tape, shown while measuring. */
+  guideText: z.string(),
+  sortOrder: z.number().int(),
+});
+export type CircumferencePointDto = z.infer<typeof circumferencePointSchema>;
+
+export const compositionPhotoSchema = z.object({
+  id: z.string(),
+  side: photoSideSchema,
+  capturedAt: isoDateTime,
+  contentType: z.string().optional(),
+  widthPx: z.number().int().optional(),
+  heightPx: z.number().int().optional(),
+});
+export type CompositionPhotoDto = z.infer<typeof compositionPhotoSchema>;
+
+/** A tape reading: what the athlete entered, plus the canonical centimetre value. */
+export const compositionMeasurementSchema = z.object({
+  id: z.string(),
+  pointId: z.string(),
+  pointCode: z.string(),
+  pointLabel: z.string(),
+  value: z.number(),
+  unit: measurementUnitSchema,
+  valueCm: z.number(),
+  capturedAt: isoDateTime,
+});
+export type CompositionMeasurementDto = z.infer<typeof compositionMeasurementSchema>;
+
+/**
+ * A body-fat estimate is always a range with a confidence label and the
+ * working behind it. There is no single "your body fat is X" anywhere on the
+ * wire, and `note` says it is not a medical measurement.
+ */
+export const bodyFatEstimateSchema = z.object({
+  id: z.string(),
+  method: bodyFatMethodSchema,
+  formula: bodyFatFormulaSchema.optional(),
+  variant: z.enum(['male', 'female', 'both']).optional(),
+  /** Percent body fat the range is centred on. */
+  value: z.number(),
+  valueLow: z.number(),
+  valueHigh: z.number(),
+  confidence: confidenceSchema,
+  confidenceReasons: z.array(z.string()),
+  inputs: z.array(
+    z.object({ key: z.string(), label: z.string(), value: z.number(), unit: z.string() }),
+  ),
+  steps: z.array(z.object({ label: z.string(), detail: z.string(), result: z.number() })),
+  /** Only meaningful for the `ai` method. */
+  serviceStatus: aiServiceStatusSchema.optional(),
+  note: z.string(),
+});
+export type BodyFatEstimateDto = z.infer<typeof bodyFatEstimateSchema>;
+
+export const formulaRequirementSchema = z.object({
+  formula: bodyFatFormulaSchema,
+  /** Human labels of the inputs still needed, e.g. "Neck". */
+  missing: z.array(z.string()),
+});
+export type FormulaRequirementDto = z.infer<typeof formulaRequirementSchema>;
+
+/** The unit of history, comparison and deletion: photos and tape readings taken together. */
+export const bodyCompositionSessionSchema = z.object({
+  id: z.string(),
+  capturedAt: isoDateTime,
+  localDate,
+  weightKilograms: z.number().optional(),
+  note: z.string().optional(),
+  photos: z.array(compositionPhotoSchema),
+  measurements: z.array(compositionMeasurementSchema),
+  estimates: z.array(bodyFatEstimateSchema),
+  /** Formulas that could not run for this session and what they still need. */
+  estimateRequirements: z.array(formulaRequirementSchema),
+});
+export type BodyCompositionSessionDto = z.infer<typeof bodyCompositionSessionSchema>;
+
+export const bodyCompositionSummarySchema = z.object({
+  /** The tape unit to default to, from the athlete's unit preference. */
+  defaultUnit: measurementUnitSchema,
+  points: z.array(circumferencePointSchema),
+  latest: bodyCompositionSessionSchema.optional(),
+  /** Most recent sessions, newest first; the history endpoint pages the rest. */
+  sessions: z.array(bodyCompositionSessionSchema),
+  sessionCount: z.number().int(),
+  /** The non-medical note that accompanies every estimate. */
+  note: z.string(),
+});
+export type BodyCompositionSummaryDto = z.infer<typeof bodyCompositionSummarySchema>;
 
 // ---------------------------------------------------------------------------
 // Auth

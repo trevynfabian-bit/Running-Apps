@@ -13,6 +13,7 @@ import { API_ERROR_CODES } from '@running/contracts';
 import { ApiError } from './errors.js';
 import { authRoutes } from './routes/auth.js';
 import { appRoutes } from './routes/app.js';
+import { bodyCompositionRoutes } from './routes/body-composition.js';
 import { connectionRoutes } from './routes/connections.js';
 import { webhookRoutes } from './routes/webhooks.js';
 import { logger } from './observability/logger.js';
@@ -75,6 +76,7 @@ export function createApp(): Hono {
   app.route('/api/auth', authRoutes);
   app.route('/api/connections', connectionRoutes);
   app.route('/api/webhooks', webhookRoutes);
+  app.route('/api/body-composition', bodyCompositionRoutes);
   app.route('/api', appRoutes);
 
   /**

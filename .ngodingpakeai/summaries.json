@@ -54,13 +54,13 @@
     "summary": "Bootstrap server API: memuat env(), menjalankan runMigrations, membuat app Hono lewat createApp, serve di API_PORT dengan @hono/node-server, dan menjalankan worker in-process yang memanggil processQueuedJobs tiap 15 detik untuk menguras antrean sync_jobs. Menangani SIGINT dan SIGTERM untuk shutdown rapi dan mencatat kegagalan start lewat logger."
   },
   "apps/api/src/app.ts": {
-    "summary": "Perakitan aplikasi Hono lewat createApp: middleware CORS, logging request tanpa body, endpoint GET /health, satu batas autentikasi terpusat untuk /api/* dengan allowlist path publik (/api/auth/*, /api/webhooks/*, /api/connections/:provider/callback) yang selain itu memanggil requireAuth. Memount router authRoutes di /api/auth, connectionRoutes di /api/connections, webhookRoutes di /api/webhooks, dan appRoutes di /api. Error boundary mengubah ApiError dan ZodError menjadi envelope error stabil (code, message, details), error lain menjadi 500 generik dengan detail hanya di log; notFound mengembalikan 404 JSON.",
+    "summary": "Perakitan aplikasi Hono lewat createApp: middleware CORS, logging request tanpa body, endpoint GET /health, satu batas autentikasi terpusat untuk /api/* dengan allowlist path publik (/api/auth/*, /api/webhooks/*, /api/connections/:provider/callback) yang selain itu memanggil requireAuth. Memount router authRoutes di /api/auth, connectionRoutes di /api/connections, webhookRoutes di /api/webhooks, bodyCompositionRoutes di /api/body-composition, dan appRoutes di /api. Error boundary mengubah ApiError dan ZodError menjadi envelope error stabil (code, message, details), error lain menjadi 500 generik dengan detail hanya di log; notFound mengembalikan 404 JSON.",
     "sections": [
       {
         "symbol": "createApp",
-        "startLine": 21,
-        "endLine": 130,
-        "summary": "Membangun instance Hono: CORS, logger request, /health, middleware auth dengan PUBLIC_PATHS, mounting empat router, onError untuk ApiError/ZodError/500, dan notFound 404."
+        "startLine": 22,
+        "endLine": 132,
+        "summary": "Membangun instance Hono: CORS, logger request, /health, middleware auth dengan PUBLIC_PATHS, mounting lima router, onError untuk ApiError/ZodError/500, dan notFound 404."
       }
     ]
   },
@@ -632,7 +632,7 @@
     "summary": "Konfigurasi build packages/contracts: extends tsconfig.json dengan noEmit false agar menghasilkan output, exclude file test dan __fixtures__."
   },
   "packages/contracts/src/index.ts": {
-    "summary": "Kontrak wire antara app mobile dan API sebagai skema Zod (sumber kebenaran tunggal) beserta tipe turunannya. Primitif: isoDateTime, localDate, providerIdSchema, confidenceSchema, workoutTypeSchema, sportTypeSchema, decisionTypeSchema, trainingStateSchema, recoveryBandSchema. Atlet: availabilitySchema, constraintsSchema, backgroundSchema, preferencesSchema, athleteProfileSchema, updateAthleteProfileSchema. Workout: workoutSourceRefSchema, workoutSummarySchema, workoutAnalysisSchema, workoutDetailSchema, createManualWorkoutSchema. Plan: intensityTargetSchema, workoutStepSchema, workoutStructureSchema, plannedWorkoutSchema, trainingBlockSchema, trainingPlanSchema, planWeekSchema, generatePlanSchema. Recovery: checkInSchema, recoveryStateSchema. Coaching: reasonSchema, coachDecisionSchema. dashboardSchema. Progress: trendSchema, seriesPointSchema, progressSchema. Koneksi: connectionStatusSchema, connectionSchema, syncResultSchema. AI coach: coachMessageSchema, claimKindSchema, coachResponseSchema. Race: createRaceGoalSchema, raceGoalSchema. weeklyReviewSchema. Auth: signUpSchema (password minimal 10 karakter), signInSchema, authResponseSchema. Error: apiErrorSchema dan konstanta API_ERROR_CODES (unauthorized, forbidden, not_found, validation_failed, provider_unavailable, provider_not_connected, token_expired, rate_limited, conflict, internal_error).",
+    "summary": "Kontrak wire antara app mobile dan API sebagai skema Zod (sumber kebenaran tunggal) beserta tipe turunannya. Primitif: isoDateTime, localDate, providerIdSchema, confidenceSchema, workoutTypeSchema, sportTypeSchema, decisionTypeSchema, trainingStateSchema, recoveryBandSchema. Atlet: availabilitySchema, constraintsSchema, backgroundSchema, preferencesSchema, athleteProfileSchema, updateAthleteProfileSchema. Workout: workoutSourceRefSchema, workoutSummarySchema, workoutAnalysisSchema, workoutDetailSchema, createManualWorkoutSchema. Plan: intensityTargetSchema, workoutStepSchema, workoutStructureSchema, plannedWorkoutSchema, trainingBlockSchema, trainingPlanSchema, planWeekSchema, generatePlanSchema. Recovery: checkInSchema, recoveryStateSchema. Coaching: reasonSchema, coachDecisionSchema. dashboardSchema. Progress: trendSchema, seriesPointSchema, progressSchema. Koneksi: connectionStatusSchema, connectionSchema, syncResultSchema. AI coach: coachMessageSchema, claimKindSchema, coachResponseSchema. Race: createRaceGoalSchema, raceGoalSchema. weeklyReviewSchema. Komposisi tubuh: photoSideSchema, measurementUnitSchema, bodyFatMethodSchema, bodyFatFormulaSchema, aiServiceStatusSchema, circumferencePointSchema, compositionPhotoSchema, compositionMeasurementSchema (nilai masukan plus valueCm kanonis), bodyFatEstimateSchema (selalu rentang dengan confidence, alasan, input, langkah, dan catatan non-medis), formulaRequirementSchema, bodyCompositionSessionSchema, bodyCompositionSummarySchema. Auth: signUpSchema (password minimal 10 karakter), signInSchema, authResponseSchema. Error: apiErrorSchema dan konstanta API_ERROR_CODES (unauthorized, forbidden, not_found, validation_failed, provider_unavailable, provider_not_connected, token_expired, rate_limited, conflict, internal_error).",
     "sections": [
       {
         "symbol": "primitives",
@@ -691,31 +691,37 @@
       {
         "symbol": "AI coach schemas",
         "startLine": 619,
-        "endLine": 652,
+        "endLine": 650,
         "summary": "Pesan ke coach dan respons dengan claims berlabel epistemik, keyMetrics, dataUsed, generatedWithoutLlm."
       },
       {
         "symbol": "race goals",
-        "startLine": 658,
-        "endLine": 694,
+        "startLine": 656,
+        "endLine": 692,
         "summary": "Input race goal dan skema race goal dengan analisis gap dan readiness."
       },
       {
         "symbol": "weeklyReviewSchema",
-        "startLine": 700,
-        "endLine": 724,
+        "startLine": 698,
+        "endLine": 722,
         "summary": "Bentuk review mingguan."
       },
       {
+        "symbol": "body composition schemas",
+        "startLine": 728,
+        "endLine": 832,
+        "summary": "Sisi foto, satuan, metode dan rumus body fat, status layanan AI, titik lingkar, foto, ukuran dengan valueCm, estimasi sebagai rentang berlabel dengan langkah, kebutuhan rumus, sesi, dan ringkasan dengan defaultUnit, latest, sessions, sessionCount, note."
+      },
+      {
         "symbol": "auth schemas",
-        "startLine": 730,
-        "endLine": 749,
+        "startLine": 837,
+        "endLine": 856,
         "summary": "Sign up, sign in, dan respons auth dengan token."
       },
       {
         "symbol": "apiErrorSchema, API_ERROR_CODES",
-        "startLine": 759,
-        "endLine": 781,
+        "startLine": 866,
+        "endLine": 888,
         "summary": "Envelope error seragam dan kode error stabil."
       }
     ]
@@ -1285,6 +1291,49 @@
         "startLine": 215,
         "endLine": 293,
         "summary": "Pelabelan hasil AI, panduan status layanan, dan pemilihan estimasi utama."
+      }
+    ]
+  },
+  "apps/api/src/body-composition/sessions.ts": {
+    "summary": "Layanan pembentukan sesi komposisi tubuh untuk API. loadCircumferenceCatalog membaca katalog titik pita terurut sortOrder; defaultUnitFor memetakan preferensi satuan atlet (imperial ke in, selain itu cm). loadEstimateContext memuat profil (sex) dan riwayat body_measurements atlet, mengambil tinggi terbaru (height_m dikali 100) yang berlaku untuk semua sesi. nearestWeight memilih berat tercatat terdekat dalam jendela 14 hari untuk sesi yang tidak menyimpan berat sendiri. toSessionDto merangkai satu sesi: foto diurutkan front, back, left, right (baris dengan sisi tak dikenal dilewati), ukuran diberi label dari katalog dan diurutkan sortOrder, peta lingkar kanonis cm per kode titik, lalu estimateBodyFat dari @running/core dijalankan saat baca (bukan disimpan) sehingga koreksi ukuran langsung mengubah estimasi; estimasi diberi id turunan sessionId plus rumus dan daftar kebutuhan rumus yang belum bisa jalan ikut dikembalikan. loadSessions memuat sesi milik satu atlet terbaru dahulu dengan limit opsional, mengambil foto dan ukuran lewat inArray id sesi milik atlet tersebut. buildSummary menyusun payload ringkasan: defaultUnit, points, latest, sessions dibatasi SUMMARY_SESSION_LIMIT (12), sessionCount total, dan catatan non-medis.",
+    "sections": [
+      {
+        "symbol": "loadCircumferenceCatalog, defaultUnitFor, loadEstimateContext, nearestWeight",
+        "startLine": 70,
+        "endLine": 135,
+        "summary": "Katalog titik, satuan default dari preferensi, konteks estimasi (sex, tinggi terbaru, riwayat berat), dan pemilihan berat terdekat dalam 14 hari."
+      },
+      {
+        "symbol": "toPhotoDto, toMeasurementDto, toEstimateDto, toSessionDto",
+        "startLine": 138,
+        "endLine": 230,
+        "summary": "Pemetaan baris ke DTO: foto terurut sisi, ukuran berlabel katalog, estimasi turunan dari engine core dengan id stabil per sesi dan rumus."
+      },
+      {
+        "symbol": "loadSessions, buildSummary",
+        "startLine": 233,
+        "endLine": 301,
+        "summary": "Pemuatan sesi per atlet terbaru dahulu beserta anak-anaknya, dan perakitan payload ringkasan dengan batas 12 sesi serta jumlah total."
+      }
+    ]
+  },
+  "apps/api/src/routes/body-composition.ts": {
+    "summary": "Router Hono modul komposisi tubuh yang di-mount di /api/body-composition sehingga tercakup batas autentikasi terpusat di app.ts. Saat ini satu endpoint: GET /summary yang memanggil buildSummary untuk atlet dari token terverifikasi dan mengembalikan katalog titik pita, satuan default, sesi terakhir lengkap, sesi terbaru, jumlah sesi, dan catatan non-medis. Endpoint sesi, foto, ukuran, dan perbandingan menyusul di fase berikutnya."
+  },
+  "apps/api/src/body-composition/summary.test.ts": {
+    "summary": "Test endpoint GET /api/body-composition/summary terhadap PGlite in-memory dengan migrasi dan autentikasi nyata; sesi disisipkan langsung ke database karena endpoint tulis belum ada. Memverifikasi: 401 tanpa token; respons awal lolos bodyCompositionSummarySchema dengan defaultUnit cm, delapan titik katalog berurutan dengan teks panduan, tanpa sesi, sessionCount 0, dan catatan non-medis; sesi terakhir menampilkan foto terurut front, back, left, right meski disisipkan acak, ukuran berlabel dan terurut katalog, kedua estimasi rumus (us_navy lalu ymca) berupa rentang dengan alasan dan langkah, berat sesi mengalahkan berat tercatat, sedangkan sesi lama tanpa leher melaporkan kebutuhan Neck untuk Navy dan meminjam berat tercatat dalam 14 hari untuk YMCA; defaultUnit mengikuti preferensi imperial; daftar sesi dibatasi SUMMARY_SESSION_LIMIT namun sessionCount tetap total; atlet lain tidak melihat sesi atlet pertama.",
+    "sections": [
+      {
+        "symbol": "signUp, summary, createSession",
+        "startLine": 36,
+        "endLine": 142,
+        "summary": "Harness: env test, migrasi, createApp, pendaftaran atlet, helper pemanggil endpoint, dan penyisipan sesi dengan foto serta ukuran."
+      },
+      {
+        "symbol": "describe GET /api/body-composition/summary",
+        "startLine": 144,
+        "endLine": 282,
+        "summary": "Kasus autentikasi, keadaan kosong, sesi terakhir lengkap, preferensi satuan, batas jumlah sesi, dan isolasi antar atlet."
       }
     ]
   }
