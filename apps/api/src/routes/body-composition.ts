@@ -1,6 +1,6 @@
 /**
- * Body composition routes: the summary the module opens on, sessions and
- * their photos. Measurements, history and comparison follow in later tasks.
+ * Body composition routes: the summary the module opens on, sessions, their
+ * photos and their tape measurements. History and comparison follow later.
  *
  * Mounted under `/api/body-composition`, so the app-wide auth boundary in
  * `app.ts` covers every route here; each handler reads the athlete from the
@@ -11,12 +11,17 @@
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 
-import { API_ERROR_CODES, createBodyCompositionSessionSchema } from '@running/contracts';
+import {
+  API_ERROR_CODES,
+  createBodyCompositionSessionSchema,
+  saveMeasurementsSchema,
+} from '@running/contracts';
 import { isPhotoSide, type PhotoSide } from '@running/core';
 
 import { getDb } from '../db/client.js';
 import { ApiError, badRequest, notFound } from '../errors.js';
 import type { AuthVariables } from '../security/auth.js';
+import { deleteMeasurement, saveMeasurements } from '../body-composition/measurements.js';
 import { MAX_PHOTO_BYTES, readPhoto, savePhoto } from '../body-composition/photos.js';
 import { buildSummary, createSession, loadSession } from '../body-composition/sessions.js';
 
@@ -125,4 +130,27 @@ bodyCompositionRoutes.get('/sessions/:id/photos/:side', async (c) => {
     'content-length': String(body.byteLength),
     'cache-control': 'private, no-store',
   });
+});
+
+// ---------------------------------------------------------------------------
+// Measurements
+// ---------------------------------------------------------------------------
+
+/**
+ * Save tape readings for a session, in cm or inches as entered. A point that
+ * already has a value in the session is corrected in place. Returns the whole
+ * session so the client sees the recomputed estimates straight away.
+ */
+bodyCompositionRoutes.put('/sessions/:id/measurements', async (c) => {
+  const input = saveMeasurementsSchema.parse(await c.req.json());
+  const { db } = await getDb();
+  return c.json(await saveMeasurements(db, c.get('athleteId'), c.req.param('id'), input));
+});
+
+/** Remove one point's reading from a session; returns the session. */
+bodyCompositionRoutes.delete('/sessions/:id/measurements/:pointCode', async (c) => {
+  const { db } = await getDb();
+  return c.json(
+    await deleteMeasurement(db, c.get('athleteId'), c.req.param('id'), c.req.param('pointCode')),
+  );
 });

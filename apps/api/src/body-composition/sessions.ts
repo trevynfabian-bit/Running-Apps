@@ -242,6 +242,30 @@ function toSessionDto(
 // ---------------------------------------------------------------------------
 
 /**
+ * The session row, provided it belongs to the athlete. Anything else is a
+ * plain not-found: a session that is someone else's must look exactly like
+ * one that does not exist.
+ */
+export async function requireOwnedSession(
+  db: Database,
+  athleteId: string,
+  sessionId: string,
+): Promise<SessionRow> {
+  const [session] = await db
+    .select()
+    .from(bodyCompositionSessions)
+    .where(
+      and(
+        eq(bodyCompositionSessions.id, sessionId),
+        eq(bodyCompositionSessions.athleteId, athleteId),
+      ),
+    )
+    .limit(1);
+  if (!session) throw notFound('Session');
+  return session;
+}
+
+/**
  * Sessions for one athlete, newest first, each with photos, labelled
  * measurements and derived estimates. Only rows owned by `athleteId` are ever
  * read: the session ids are used to fetch children, never trusted on their own.

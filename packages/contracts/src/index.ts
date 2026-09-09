@@ -840,6 +840,26 @@ export const createBodyCompositionSessionSchema = z.object({
 });
 export type CreateBodyCompositionSessionDto = z.infer<typeof createBodyCompositionSessionSchema>;
 
+/** One tape reading as the athlete entered it; the API normalises to cm. */
+export const measurementInputSchema = z.object({
+  /** Catalog code, e.g. `waist`, `left_arm`. */
+  pointCode: z.string().min(1),
+  value: z.number().positive(),
+  unit: measurementUnitSchema,
+});
+export type MeasurementInputDto = z.infer<typeof measurementInputSchema>;
+
+/**
+ * Save readings for a session. A point already recorded in the session is
+ * corrected in place, so re-entering a value never creates a second one.
+ */
+export const saveMeasurementsSchema = z.object({
+  measurements: z.array(measurementInputSchema).min(1).max(20),
+  /** When the tape was used; defaults to the session capture time. */
+  capturedAt: isoDateTime.optional(),
+});
+export type SaveMeasurementsDto = z.infer<typeof saveMeasurementsSchema>;
+
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------

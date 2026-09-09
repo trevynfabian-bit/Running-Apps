@@ -13,35 +13,16 @@ import type { CompositionPhotoDto } from '@running/contracts';
 import type { PhotoSide } from '@running/core';
 
 import type { Database } from '../db/client.js';
-import { bodyCompositionSessions, compositionPhotos } from '../db/schema.js';
-import { badRequest, notFound } from '../errors.js';
+import { compositionPhotos } from '../db/schema.js';
+import { badRequest } from '../errors.js';
 import { getPhotoStore, inspectImage } from './photo-store.js';
-import { toPhotoDto } from './sessions.js';
+import { requireOwnedSession, toPhotoDto } from './sessions.js';
 
 /** Upper bound on one photo. Phone cameras produce 2 to 6 MB; this leaves room. */
 export const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 
 export const NOT_A_PHOTO_MESSAGE =
   'That file is not a photo we can store. Use a JPEG, PNG, WebP or HEIC image.';
-
-async function ownedSession(
-  db: Database,
-  athleteId: string,
-  sessionId: string,
-): Promise<typeof bodyCompositionSessions.$inferSelect> {
-  const [session] = await db
-    .select()
-    .from(bodyCompositionSessions)
-    .where(
-      and(
-        eq(bodyCompositionSessions.id, sessionId),
-        eq(bodyCompositionSessions.athleteId, athleteId),
-      ),
-    )
-    .limit(1);
-  if (!session) throw notFound('Session');
-  return session;
-}
 
 export async function savePhoto(
   db: Database,
@@ -54,7 +35,7 @@ export async function savePhoto(
     capturedAt?: Date;
   },
 ): Promise<CompositionPhotoDto> {
-  const session = await ownedSession(db, input.athleteId, input.sessionId);
+  const session = await requireOwnedSession(db, input.athleteId, input.sessionId);
 
   if (input.bytes.length === 0) throw badRequest('The photo was empty.');
   const image = inspectImage(input.bytes);
