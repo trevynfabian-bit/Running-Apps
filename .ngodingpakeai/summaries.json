@@ -730,7 +730,7 @@
     "summary": "Konfigurasi build packages/core: extends tsconfig.json dengan noEmit false, exclude file test dan folder __fixtures__ dari output."
   },
   "packages/core/src/index.ts": {
-    "summary": "Barrel @running/core yang mengekspor seluruh domain (athlete, body-composition, coaching, provenance, race, recovery, training, workout), engine (decision, dedup, efficiency, fitness, load, planner, race, recovery, review, state, trends, zones), units, dan util (stats, time). Seluruh paket deterministik dan bebas efek samping: tanpa I/O, tanpa jam implisit, tanpa randomness; id dan timestamp diinjeksi pemanggil."
+    "summary": "Barrel @running/core yang mengekspor seluruh domain (athlete, body-composition, coaching, provenance, race, recovery, training, workout), engine (body-fat, decision, dedup, efficiency, fitness, load, planner, race, recovery, review, state, trends, zones), units, dan util (stats, time). Seluruh paket deterministik dan bebas efek samping: tanpa I/O, tanpa jam implisit, tanpa randomness; id dan timestamp diinjeksi pemanggil."
   },
   "packages/core/src/__fixtures__/index.ts": {
     "summary": "Fixture test deterministik yang meniru data latihan nyata: konstanta TEST_TZ Asia/Jakarta, makeAthlete (profil lengkap dengan background, availability, constraints, preferences, markers, dan satu race result 5K), makeProviderWorkout, makeCanonicalWorkout, makeSteadySamples (stream sampel lari steady dengan cardiac drift dan jitter terkontrol), makeDailyLoads (beban harian mengikuti pola mingguan), dan WORKOUT_TYPES_FOR_TEST."
@@ -1217,5 +1217,75 @@
   },
   "apps/api/drizzle/meta/0001_snapshot.json": {
     "summary": "Snapshot skema drizzle-kit (versi 7) setelah migrasi 0001_body_composition: definisi lengkap kolom, tipe, default, foreign key, dan index untuk seluruh tabel di schema public termasuk empat tabel komposisi tubuh baru. Dipakai drizzle-kit untuk menghitung diff pada migrasi berikutnya; tidak diedit manual."
+  },
+  "packages/core/src/engines/body-fat.ts": {
+    "summary": "Engine estimasi lemak tubuh dari ukuran pita, deterministik dan bebas efek samping. Dua rumus terpublikasi: US Navy (leher, pinggang, tinggi; ditambah pinggul untuk perempuan) dengan galat tipikal sekitar 3,5 poin persentase, dan YMCA (pinggang dan berat badan) yang lebih kasar dan dipakai terutama sebagai pembanding silang. Setiap estimasi (BodyFatEstimate) selalu berupa rentang valueLow sampai valueHigh di sekitar value, dengan label keyakinan ConfidenceLevel (low, moderate, high), daftar alasan keyakinan dalam bahasa awam, daftar input yang dipakai beserta satuannya, langkah perhitungan dengan angka tersubstitusi agar transparan, dan catatan BODY_FAT_ESTIMATE_NOTE bahwa ini bukan pengukuran medis. Lebar rentang diambil dari tabel per rumus dan tingkat keyakinan, melebar saat keyakinan turun. Aturan keyakinan: Navy mulai moderate, YMCA mulai low; jenis kelamin tidak diisi menurunkan ke low dan menampilkan kedua varian sebagai satu rentang gabungan; input di luar rentang validasi atau hasil di luar 2 sampai 60 persen menurunkan ke low; pada estimateBodyFat kedua rumus saling memeriksa: selisih 3 poin atau kurang menaikkan keyakinan, selisih lebih dari 6 poin menurunkannya dengan saran memeriksa penempatan pita. usNavyRequirements dan ymcaRequirements menyebutkan input yang masih kurang (termasuk pinggang yang harus lebih besar dari leher) sehingga UI bisa memandu pengguna. labelAiBodyFat membungkus hasil layanan foto ke bentuk yang sama: mulai low, bisa moderate bila empat sisi dianalisis, layanan yakin, dan rentangnya tidak terlalu lebar, tidak pernah high; rentang layanan dihormati namun tidak boleh lebih sempit dari lantai minimum. aiServiceGuidance memetakan status layanan (active, unavailable, failed) ke pesan dan flag useFormulaInstead. preferredBodyFatEstimate memilih estimasi berkeyakinan tertinggi lalu metode terbaik (Navy, YMCA, AI).",
+    "sections": [
+      {
+        "symbol": "BodyFatInputs, BodyFatEstimate, BodyFatAssessment",
+        "startLine": 46,
+        "endLine": 118,
+        "summary": "Kosakata publik: rumus, metode (formula atau ai), status layanan AI, varian rumus, catatan non-medis, bentuk input (sex, tinggi, berat, lingkar dalam cm) dan keluaran estimasi beserta kebutuhan rumus yang belum bisa jalan."
+      },
+      {
+        "symbol": "RANGE_HALF_WIDTH, PLAUSIBLE_INPUT_CM, applyCommonChecks, finalize",
+        "startLine": 122,
+        "endLine": 229,
+        "summary": "Tabel lebar rentang per rumus dan keyakinan, batas kewajaran input dan hasil, serta pemeriksaan umum (sex tidak diisi, hasil tidak wajar) dan pembentukan rentang akhir dari draft."
+      },
+      {
+        "symbol": "usNavyRequirements, usNavyBodyFat",
+        "startLine": 233,
+        "endLine": 400,
+        "summary": "Rumus US Navy varian laki-laki dan perempuan dengan langkah log10 yang ditampilkan, daftar input yang kurang, dan estimasi tunggal tanpa pemeriksaan silang."
+      },
+      {
+        "symbol": "ymcaRequirements, ymcaBodyFat",
+        "startLine": 403,
+        "endLine": 502,
+        "summary": "Rumus YMCA dalam inci dan pon dengan langkah konversi dari cm dan kg yang ditampilkan, mulai dari keyakinan low."
+      },
+      {
+        "symbol": "crossCheck, preferredBodyFatEstimate, estimateBodyFat",
+        "startLine": 505,
+        "endLine": 595,
+        "summary": "Menjalankan semua rumus yang inputnya tersedia, saling memeriksa (setuju menaikkan, berbeda jauh menurunkan keyakinan), mengurutkan hasil, dan menyebutkan rumus yang belum bisa jalan beserta input yang dibutuhkan."
+      },
+      {
+        "symbol": "labelAiBodyFat, aiServiceGuidance",
+        "startLine": 598,
+        "endLine": 718,
+        "summary": "Pelabelan hasil layanan foto ke bentuk estimasi yang sama (maksimum moderate, lantai lebar rentang, clamp nilai tak wajar) dan panduan pengguna per status layanan AI."
+      }
+    ]
+  },
+  "packages/core/src/engines/body-fat.test.ts": {
+    "summary": "Test vitest engine estimasi lemak tubuh. Memverifikasi rumus US Navy laki-laki dan perempuan terhadap nilai terpublikasi, lima langkah perhitungan dengan angka tersubstitusi, lebar rentang 7 poin pada keyakinan moderate dan 10 poin pada low, penolakan saat input kurang atau pinggang tidak lebih besar dari leher, penurunan keyakinan untuk input tak wajar, rentang gabungan kedua varian saat jenis kelamin tidak diisi, dan fallback varian laki-laki tanpa pinggul. Rumus YMCA diuji konversi inci dan pon, konstanta perempuan, keyakinan low, dan kebutuhan pinggang plus berat. estimateBodyFat diuji urutan Navy lalu YMCA, kenaikan ke high saat sepakat dan penyempitan rentang, penurunan saat berbeda lebih dari 6 poin, catatan informatif untuk selisih sedang, ketidakmampuan kesepakatan menyelamatkan input tak wajar, daftar kebutuhan saat tidak ada yang bisa jalan, permintaan pinggul untuk perempuan, dan determinisme. labelAiBodyFat diuji baseline low dengan rentang lebar, moderate untuk empat sisi dan layanan yakin tanpa pernah high, tetap low saat sisi kurang atau rentang sangat lebar, dan clamp nilai absurd. aiServiceGuidance dan preferredBodyFatEstimate diuji preferensi keyakinan lalu metode.",
+    "sections": [
+      {
+        "symbol": "describe usNavyBodyFat",
+        "startLine": 37,
+        "endLine": 115,
+        "summary": "Rumus Navy: nilai terpublikasi, langkah, rentang, input kurang, pinggang vs leher, input tak wajar, sex tidak diisi."
+      },
+      {
+        "symbol": "describe ymcaBodyFat",
+        "startLine": 117,
+        "endLine": 145,
+        "summary": "Rumus YMCA: konversi satuan, konstanta perempuan, keyakinan low, kebutuhan input."
+      },
+      {
+        "symbol": "describe estimateBodyFat",
+        "startLine": 147,
+        "endLine": 213,
+        "summary": "Pemeriksaan silang, urutan hasil, daftar kebutuhan, dan determinisme."
+      },
+      {
+        "symbol": "describe labelAiBodyFat, aiServiceGuidance, preferredBodyFatEstimate",
+        "startLine": 215,
+        "endLine": 293,
+        "summary": "Pelabelan hasil AI, panduan status layanan, dan pemilihan estimasi utama."
+      }
+    ]
   }
 }
