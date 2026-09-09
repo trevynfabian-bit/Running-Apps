@@ -16,6 +16,7 @@ import type { PgliteDatabase } from 'drizzle-orm/pglite';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 
 import { getDb } from './client.js';
+import { ensureCircumferencePoints } from '../body-composition/catalog.js';
 import type { schema } from './schema.js';
 import { logger } from '../observability/logger.js';
 
@@ -34,6 +35,10 @@ export async function runMigrations(options: { dataDir?: string } = {}): Promise
       migrationsFolder: MIGRATIONS_FOLDER,
     });
   }
+
+  // Reference data the schema is unusable without; idempotent, so it belongs
+  // with the migrations rather than with the seed.
+  await ensureCircumferencePoints(handle.db);
 
   logger.info('migrations.applied', { driver: handle.kind });
 }

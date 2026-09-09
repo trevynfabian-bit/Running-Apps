@@ -19,10 +19,10 @@ PostgreSQL. Schema in `apps/api/src/db/schema.ts`; generated migrations in
 
 ### Identity
 
-| Table | Notes |
-|---|---|
-| `users` | Credentials. `password_hash` is scrypt. Unique email. |
-| `athlete_profiles` | One per user. Availability, constraints, markers as JSONB. |
+| Table               | Notes                                                                                                                                                    |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `users`             | Credentials. `password_hash` is scrypt. Unique email.                                                                                                    |
+| `athlete_profiles`  | One per user. Availability, constraints, markers as JSONB.                                                                                               |
 | `body_measurements` | Append-only observations, one row per provider per metric per instant. Never overwritten — conflicts are resolved at read time by the provenance engine. |
 
 ### Connections
@@ -87,6 +87,26 @@ Derived state is cached rather than authoritative: it can be rebuilt from
 
 Conflating these is how an assistant ends up confidently wrong about someone —
 one unusual week must not become a permanent belief about how they train.
+
+### Body composition
+
+`body_composition_sessions` → `composition_photos`, `composition_measurements`,
+with `circumference_points` as a reference catalog.
+
+A session is the unit of history, comparison and deletion: the four-sided
+portrait and the tape measurements taken together. Photos are stored in object
+storage; the row holds `storage_key` plus metadata, and `UNIQUE (session_id,
+side)` keeps one photo per side. Measurements are `UNIQUE (session_id,
+point_id)`, so correcting a reading updates it rather than adding a second.
+`value` and `unit` are what the athlete entered; `value_cm` is the canonical
+form calculations read, the same original/normalised split as provider data.
+The table is named `composition_measurements` because `body_measurements`
+already holds provider-sourced body metrics.
+
+`circumference_points` is seeded from `CIRCUMFERENCE_POINT_CATALOG` in
+`@running/core` every time migrations run (`ensureCircumferencePoints`), so a
+fresh database, a test database and production converge on the same eight
+points and guide text. Deleting a point that measurements reference is refused.
 
 ### Operations
 

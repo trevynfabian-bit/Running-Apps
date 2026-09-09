@@ -711,6 +711,121 @@ export const weeklySummaries = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// Body composition
+// ---------------------------------------------------------------------------
+
+/**
+ * One documentation session: the four-sided portrait and tape measurements
+ * (and, later, body-fat estimates) recorded together. The session is the unit
+ * of history, comparison and deletion.
+ */
+export const bodyCompositionSessions = pgTable(
+  'body_composition_sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    athleteId: uuid('athlete_id')
+      .notNull()
+      .references(() => athleteProfiles.id, { onDelete: 'cascade' }),
+    capturedAt: timestamp('captured_at', { withTimezone: true }).notNull(),
+    /** Calendar day in the athlete's timezone, like a training day. */
+    localDate: date('local_date').notNull(),
+    /** Weight recorded with the session, when the athlete gave one. */
+    weightKilograms: real('weight_kilograms'),
+    note: text('note'),
+    createdAt,
+    updatedAt,
+  },
+  (t) => [index('body_composition_sessions_athlete_captured').on(t.athleteId, t.capturedAt)],
+);
+
+/**
+ * Photos live in object storage, not in the database. This row holds the
+ * storage key and enough metadata to serve the file. One photo per side.
+ */
+export const compositionPhotos = pgTable(
+  'composition_photos',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => bodyCompositionSessions.id, { onDelete: 'cascade' }),
+    athleteId: uuid('athlete_id')
+      .notNull()
+      .references(() => athleteProfiles.id, { onDelete: 'cascade' }),
+    side: text('side').notNull(), // front | back | left | right
+    storageKey: text('storage_key').notNull(),
+    contentType: text('content_type'),
+    byteSize: integer('byte_size'),
+    widthPx: integer('width_px'),
+    heightPx: integer('height_px'),
+    capturedAt: timestamp('captured_at', { withTimezone: true }).notNull(),
+    createdAt,
+  },
+  (t) => [
+    uniqueIndex('composition_photos_session_side_unique').on(t.sessionId, t.side),
+    index('composition_photos_athlete_captured').on(t.athleteId, t.capturedAt),
+  ],
+);
+
+/**
+ * Reference catalog of tape points. Seeded from CIRCUMFERENCE_POINT_CATALOG in
+ * @running/core whenever migrations run (see body-composition/catalog.ts), so
+ * the guide text has one home and every database converges on it.
+ */
+export const circumferencePoints = pgTable(
+  'circumference_points',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    code: text('code').notNull(), // neck | chest | waist | hips | left_arm | ...
+    label: text('label').notNull(),
+    guideText: text('guide_text').notNull(),
+    sortOrder: integer('sort_order').notNull(),
+    createdAt,
+    updatedAt,
+  },
+  (t) => [uniqueIndex('circumference_points_code_unique').on(t.code)],
+);
+
+/**
+ * Tape measurements taken in a session, one row per point.
+ *
+ * Named `composition_measurements` because `body_measurements` already holds
+ * provider-sourced body metrics. `value` and `unit` are what the athlete
+ * entered; `value_cm` is the canonical form every calculation reads, the same
+ * original/normalised split used for provider data.
+ */
+export const compositionMeasurements = pgTable(
+  'composition_measurements',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => bodyCompositionSessions.id, { onDelete: 'cascade' }),
+    athleteId: uuid('athlete_id')
+      .notNull()
+      .references(() => athleteProfiles.id, { onDelete: 'cascade' }),
+    pointId: uuid('point_id')
+      .notNull()
+      .references(() => circumferencePoints.id, { onDelete: 'restrict' }),
+    value: doublePrecision('value').notNull(),
+    unit: text('unit').notNull().default('cm'), // cm | in
+    valueCm: doublePrecision('value_cm').notNull(),
+    capturedAt: timestamp('captured_at', { withTimezone: true }).notNull(),
+    createdAt,
+    updatedAt,
+  },
+  (t) => [
+    // One value per point per session; correcting a reading updates it.
+    uniqueIndex('composition_measurements_session_point_unique').on(t.sessionId, t.pointId),
+    index('composition_measurements_athlete_point_captured').on(
+      t.athleteId,
+      t.pointId,
+      t.capturedAt,
+    ),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // Sync and observability
 // ---------------------------------------------------------------------------
 
@@ -812,6 +927,10 @@ export const schema = {
   coachMemory,
   coachConversations,
   weeklySummaries,
+  bodyCompositionSessions,
+  compositionPhotos,
+  circumferencePoints,
+  compositionMeasurements,
   syncJobs,
   syncEvents,
   auditLogs,

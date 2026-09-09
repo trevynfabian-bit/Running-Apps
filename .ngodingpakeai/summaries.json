@@ -42,7 +42,7 @@
     "summary": "Konfigurasi drizzle-kit: schema di src/db/schema.ts, output folder drizzle, dialect postgresql, mode strict dan verbose. Migrasi digenerate dari schema dan dijalankan oleh src/db/migrate.ts terhadap PGlite maupun Postgres asli."
   },
   "apps/api/drizzle/meta/_journal.json": {
-    "summary": "Jurnal migrasi drizzle-kit (versi 7, dialect postgresql) dengan satu entri migrasi bertag 0000_init."
+    "summary": "Jurnal migrasi drizzle-kit (versi 7, dialect postgresql) dengan dua entri migrasi berurutan: 0000_init dan 0001_body_composition."
   },
   "apps/api/drizzle/0000_init.sql": {
     "summary": "Migrasi SQL awal yang digenerate drizzle-kit dari schema.ts. Membuat 28 tabel: users, athlete_profiles, body_measurements, provider_connections, strava_activities, whoop_cycles, whoop_recoveries, whoop_sleep, whoop_workouts, healthkit_samples, canonical_workouts, workout_sources, training_plans, training_blocks, planned_workouts, race_goals, race_results, check_ins, recovery_states, training_loads, coach_decisions, coach_insights, coach_memory, coach_conversations, weekly_summaries, sync_jobs, sync_events, audit_logs. Menambahkan foreign key ON DELETE cascade ke athlete_profiles, provider_connections, training_plans, training_blocks, canonical_workouts, serta unique index idempotensi seperti (connection_id, external_id) pada tabel provider, (provider, external_id) pada workout_sources, (athlete_id, date) pada tabel state harian, (athlete_id, provider) pada provider_connections, dan (provider, event_key) pada sync_events."
@@ -74,10 +74,10 @@
     "summary": "Klien database Drizzle dengan dua driver dan satu schema: postgres-js bila DATABASE_URL diset (pool max 10, connect timeout 10 detik), selain itu PGlite embedded pada folder PGLITE_DIR atau memory:// untuk test. getDb mengembalikan handle singleton berisi db, raw driver, kind (pglite atau postgres), dan close; resetDbForTesting mengosongkan cache handle."
   },
   "apps/api/src/db/migrate.ts": {
-    "summary": "Runner migrasi: runMigrations membuka handle DB lalu memanggil migrator drizzle sesuai driver (pglite atau postgres-js) dengan folder migrasi apps/api/drizzle (MIGRATIONS_FOLDER). Migrasi yang sudah diterapkan dicatat di tabel __drizzle_migrations sehingga aman diulang. Bisa dijalankan langsung sebagai script pnpm db:migrate."
+    "summary": "Runner migrasi: runMigrations membuka handle DB lalu memanggil migrator drizzle sesuai driver (pglite atau postgres-js) dengan folder migrasi apps/api/drizzle (MIGRATIONS_FOLDER). Migrasi yang sudah diterapkan dicatat di tabel __drizzle_migrations sehingga aman diulang. Setelah migrator selesai, memanggil ensureCircumferencePoints untuk meng-upsert katalog titik pita dari @running/core sebagai data referensi yang idempoten, sehingga database baru, database test, dan produksi memiliki delapan titik yang sama. Bisa dijalankan langsung sebagai script pnpm db:migrate."
   },
   "apps/api/src/db/schema.ts": {
-    "summary": "Skema PostgreSQL via Drizzle, sumber kebenaran migrasi. Konvensi: timestamptz UTC, tanggal latihan sebagai date lokal atlet, unique (connection, external_id) pada tabel provider untuk idempotensi, payload raw disimpan. Tabel identitas: users, athleteProfiles (JSONB background, availability, constraints, notifications, marker HR, hasCompletedOnboarding), bodyMeasurements append-only per provider. providerConnections menyimpan status, externalUserId, scopes, token OAuth terenkripsi, syncCursor. Tabel raw provider: stravaActivities, whoopCycles, whoopRecoveries, whoopSleep, whoopWorkouts, healthkitSamples. canonicalWorkouts (riwayat terdeduplikasi) dan workoutSources (join provenance dengan contributedFields). Planning: trainingPlans, trainingBlocks, plannedWorkouts, raceGoals, raceResults. State harian: checkIns, recoveryStates, trainingLoads, coachDecisions, coachInsights, coachMemory, coachConversations, weeklySummaries. Operasional: syncJobs (antrean durable dengan runAfter), syncEvents (webhook dedup event_key), auditLogs. Mengekspor objek schema untuk drizzle.",
+    "summary": "Skema PostgreSQL via Drizzle, sumber kebenaran migrasi. Konvensi: timestamptz UTC, tanggal latihan sebagai date lokal atlet, unique (connection, external_id) pada tabel provider untuk idempotensi, payload raw disimpan. Tabel identitas: users, athleteProfiles (JSONB background, availability, constraints, notifications, marker HR, hasCompletedOnboarding), bodyMeasurements append-only per provider. providerConnections menyimpan status, externalUserId, scopes, token OAuth terenkripsi, syncCursor. Tabel raw provider: stravaActivities, whoopCycles, whoopRecoveries, whoopSleep, whoopWorkouts, healthkitSamples. canonicalWorkouts (riwayat terdeduplikasi) dan workoutSources (join provenance dengan contributedFields). Planning: trainingPlans, trainingBlocks, plannedWorkouts, raceGoals, raceResults. State harian: checkIns, recoveryStates, trainingLoads, coachDecisions, coachInsights, coachMemory, coachConversations, weeklySummaries. Komposisi tubuh: bodyCompositionSessions (sesi sebagai unit riwayat, perbandingan, dan penghapusan; capturedAt, localDate, weightKilograms, note), compositionPhotos (kunci object storage plus metadata, unik per sesi dan sisi), circumferencePoints (katalog referensi titik pita, unik per code, di-seed dari @running/core), compositionMeasurements (nilai dan satuan yang dimasukkan atlet plus valueCm kanonis, unik per sesi dan titik, FK ke titik dengan onDelete restrict). Operasional: syncJobs (antrean durable dengan runAfter), syncEvents (webhook dedup event_key), auditLogs. Mengekspor objek schema untuk drizzle.",
     "sections": [
       {
         "symbol": "users, athleteProfiles, bodyMeasurements",
@@ -116,16 +116,22 @@
         "summary": "State harian turunan yang unik per (athleteId, date) atau week_start, memori coach (stated_preference, observed_pattern, temporary_condition), dan riwayat percakapan coach."
       },
       {
+        "symbol": "bodyCompositionSessions, compositionPhotos, circumferencePoints, compositionMeasurements",
+        "startLine": 722,
+        "endLine": 827,
+        "summary": "Tabel komposisi tubuh: sesi per atlet dengan index (athleteId, capturedAt); foto per sisi dengan storageKey dan metadata file, unik (sessionId, side); katalog titik pita unik per code; ukuran pita dengan value, unit, valueCm kanonis, unik (sessionId, pointId), cascade dari sesi dan atlet, restrict pada titik katalog. Dinamai composition_measurements karena body_measurements sudah dipakai data provider."
+      },
+      {
         "symbol": "syncJobs, syncEvents, auditLogs",
-        "startLine": 717,
-        "endLine": 787,
+        "startLine": 832,
+        "endLine": 902,
         "summary": "Antrean sync durable dengan attempts dan runAfter untuk backoff, event webhook dengan unique (provider, eventKey), dan audit log tanpa token atau nilai kesehatan mentah."
       },
       {
         "symbol": "schema",
-        "startLine": 789,
-        "endLine": 818,
-        "summary": "Objek schema yang mengumpulkan seluruh tabel untuk klien Drizzle."
+        "startLine": 904,
+        "endLine": 937,
+        "summary": "Objek schema yang mengumpulkan seluruh tabel, termasuk empat tabel komposisi tubuh, untuk klien Drizzle."
       }
     ]
   },
@@ -605,7 +611,7 @@
     "summary": "Dokumentasi setiap rumus mesin coaching dan batasannya: model training load (trimp_hr, hr_zone, srpe, duration) dengan TRIMP Banister dan koefisien per jenis kelamin, ACWR yang sengaja di-de-emphasis, monotony dan strain Foster; estimasi fitness Riegel dan VDOT Daniels-Gilbert dengan gating, pembobotan recency dan sumber, serta tabel confidence; metodologi zona (max_hr_percent, hr_reserve, threshold_hr, pace) dan Tanaka untuk max HR; efficiency factor dan aerobic decoupling dengan gate validitas; komponen recovery komposit beserta bobot dan band; hierarki dan tabel skor decision engine; prinsip plan generation; tabel training state; dan prinsip confidence di semua estimasi."
   },
   "docs/DATA_MODEL.md": {
-    "summary": "Dokumentasi data model PostgreSQL: konvensi (timestamptz UTC, date lokal atlet, payload raw disimpan, unique constraint untuk idempotensi), tabel identitas, provider_connections dengan token terenkripsi dan sync_cursor, tabel raw provider dengan unique (connection_id, external_id), canonical_workouts dan workout_sources (PK gabungan dan unique provider plus external_id), planning, derived daily state unik per (athlete_id, date), coach_memory dengan jenis stated_preference, observed_pattern, temporary_condition, operasional (sync_jobs, sync_events, audit_logs), kebijakan deletion per provider, catatan RLS belum aktif beserta contoh policy, dan perintah migrasi drizzle-kit."
+    "summary": "Dokumentasi data model PostgreSQL: konvensi (timestamptz UTC, date lokal atlet, payload raw disimpan, unique constraint untuk idempotensi), tabel identitas, provider_connections dengan token terenkripsi dan sync_cursor, tabel raw provider dengan unique (connection_id, external_id), canonical_workouts dan workout_sources (PK gabungan dan unique provider plus external_id), planning, derived daily state unik per (athlete_id, date), coach_memory dengan jenis stated_preference, observed_pattern, temporary_condition, bagian komposisi tubuh (body_composition_sessions sebagai unit riwayat dan penghapusan, composition_photos di object storage unik per sisi, composition_measurements dengan value, unit, dan value_cm kanonis unik per titik, circumference_points di-seed dari @running/core saat migrasi dan tidak bisa dihapus bila masih dirujuk), operasional (sync_jobs, sync_events, audit_logs), kebijakan deletion per provider, catatan RLS belum aktif beserta contoh policy, dan perintah migrasi drizzle-kit."
   },
   "docs/ENVIRONMENT.md": {
     "summary": "Dokumentasi environment: batas secret backend-only (client secret Strava dan WHOOP, DATABASE_URL, AUTH_JWT_SECRET, TOKEN_ENCRYPTION_KEY, AI_API_KEY, webhook secret) versus variabel EXPO_PUBLIC_ yang tertanam di binary app, cara membuat secret dengan openssl, penolakan default tidak aman di production oleh loadEnv, tabel development vs production, redaksi logger, dan checklist deployment."
@@ -724,7 +730,7 @@
     "summary": "Konfigurasi build packages/core: extends tsconfig.json dengan noEmit false, exclude file test dan folder __fixtures__ dari output."
   },
   "packages/core/src/index.ts": {
-    "summary": "Barrel @running/core yang mengekspor seluruh domain (athlete, coaching, provenance, race, recovery, training, workout), engine (decision, dedup, efficiency, fitness, load, planner, race, recovery, review, state, trends, zones), units, dan util (stats, time). Seluruh paket deterministik dan bebas efek samping: tanpa I/O, tanpa jam implisit, tanpa randomness; id dan timestamp diinjeksi pemanggil."
+    "summary": "Barrel @running/core yang mengekspor seluruh domain (athlete, body-composition, coaching, provenance, race, recovery, training, workout), engine (decision, dedup, efficiency, fitness, load, planner, race, recovery, review, state, trends, zones), units, dan util (stats, time). Seluruh paket deterministik dan bebas efek samping: tanpa I/O, tanpa jam implisit, tanpa randomness; id dan timestamp diinjeksi pemanggil."
   },
   "packages/core/src/__fixtures__/index.ts": {
     "summary": "Fixture test deterministik yang meniru data latihan nyata: konstanta TEST_TZ Asia/Jakarta, makeAthlete (profil lengkap dengan background, availability, constraints, preferences, markers, dan satu race result 5K), makeProviderWorkout, makeCanonicalWorkout, makeSteadySamples (stream sampel lari steady dengan cardiac drift dan jitter terkontrol), makeDailyLoads (beban harian mengikuti pola mingguan), dan WORKOUT_TYPES_FOR_TEST."
@@ -1154,5 +1160,62 @@
         "summary": "Skenario stub sessions atau empty dari query param dan sumber data bodyComposition.summary dengan latensi kecil buatan."
       }
     ]
+  },
+  "packages/core/src/domain/body-composition.ts": {
+    "summary": "Domain komposisi tubuh di @running/core: kosakata bersama antara API, seed database, dan aplikasi mobile untuk modul foto empat sisi, ukuran pita, dan estimasi lemak tubuh. Mendefinisikan PHOTO_SIDES (front, back, left, right) dengan tipe PhotoSide dan guard isPhotoSide; MEASUREMENT_UNITS (cm, in) dengan MeasurementUnit, isMeasurementUnit, konstanta CM_PER_INCH, konversi inchesToCm, cmToInches, toCentimetres (normalisasi ke satuan kanonis cm) dan fromCentimetres (tampilan di satuan pilihan atlet); serta CIRCUMFERENCE_POINT_CODES delapan titik pita (neck, chest, waist, hips, left_arm, right_arm, left_thigh, right_thigh), tipe CircumferencePointCode, guard isCircumferencePointCode, antarmuka CircumferencePointDefinition (code, label, guideText, sortOrder), katalog CIRCUMFERENCE_POINT_CATALOG dengan teks panduan penempatan pita yang spesifik landmark, dan pencarian circumferencePoint. Satuan kanonis lingkar adalah sentimeter; inci hanya urusan input dan presentasi. Tabel circumference_points di database di-seed dari katalog ini.",
+    "sections": [
+      {
+        "symbol": "PHOTO_SIDES, PhotoSide, isPhotoSide",
+        "startLine": 19,
+        "endLine": 25,
+        "summary": "Empat sisi potret dalam urutan tampilan beserta tipe dan type guard-nya."
+      },
+      {
+        "symbol": "MEASUREMENT_UNITS, toCentimetres, fromCentimetres",
+        "startLine": 31,
+        "endLine": 52,
+        "summary": "Satuan yang diterima (cm, in), konstanta konversi, dan fungsi normalisasi ke serta dari sentimeter sebagai satuan kanonis."
+      },
+      {
+        "symbol": "CIRCUMFERENCE_POINT_CODES, CIRCUMFERENCE_POINT_CATALOG, circumferencePoint",
+        "startLine": 63,
+        "endLine": 151,
+        "summary": "Kode delapan titik pita, definisi katalog dengan label, teks panduan, dan urutan tampil, serta fungsi pencarian per kode yang melempar error untuk kode tak dikenal."
+      }
+    ]
+  },
+  "apps/api/src/body-composition/catalog.ts": {
+    "summary": "Seeder katalog titik lingkar untuk modul komposisi tubuh. ensureCircumferencePoints menerima handle Database lalu untuk setiap entri CIRCUMFERENCE_POINT_CATALOG dari @running/core melakukan insert ke tabel circumference_points dengan on conflict do update berdasarkan code, memperbarui label, guideText, sortOrder, dan updatedAt. Idempoten dan dipanggil setiap kali runMigrations berjalan, sehingga teks panduan penempatan pita hanya punya satu sumber dan tidak butuh migrasi data tulisan tangan.",
+    "sections": [
+      {
+        "symbol": "ensureCircumferencePoints",
+        "startLine": 18,
+        "endLine": 38,
+        "summary": "Upsert seluruh katalog titik pita ke tabel referensi, kunci konflik pada kolom code."
+      }
+    ]
+  },
+  "apps/api/src/body-composition/schema.test.ts": {
+    "summary": "Test vitest untuk skema komposisi tubuh terhadap PGlite in-memory dengan migrasi nyata (setEnvForTesting, resetDbForTesting, getDb, runMigrations). Helper createAthlete membuat user dan profil atlet, pointId mencari id titik katalog per code. Blok pertama memverifikasi katalog circumference_points ter-seed dari @running/core dengan urutan sortOrder dan teks panduan terisi, tetap delapan baris setelah migrasi diulang (idempoten), dan menolak code ganda. Blok kedua memverifikasi sesi menyimpan empat foto dan satu ukuran dalam inci dengan valueCm kanonis tersimpan berdampingan, unique index menolak foto sisi ganda dan ukuran titik ganda dalam satu sesi, penghapusan atlet mengkaskade sesi, foto, dan ukuran, serta titik katalog yang masih dirujuk ukuran tidak bisa dihapus (restrict).",
+    "sections": [
+      {
+        "symbol": "describe circumference point catalog",
+        "startLine": 76,
+        "endLine": 99,
+        "summary": "Seed katalog dari core, idempotensi saat migrasi diulang, dan penolakan code duplikat."
+      },
+      {
+        "symbol": "describe sessions, photos and measurements",
+        "startLine": 101,
+        "endLine": 258,
+        "summary": "Penyimpanan sesi dengan foto dan ukuran, penolakan sisi dan titik ganda, cascade dari atlet, serta restrict pada titik katalog yang dirujuk."
+      }
+    ]
+  },
+  "apps/api/drizzle/0001_body_composition.sql": {
+    "summary": "Migrasi SQL kedua yang digenerate drizzle-kit dari schema.ts untuk modul komposisi tubuh. Membuat empat tabel: body_composition_sessions (athlete_id, captured_at, local_date, weight_kilograms, note), circumference_points (code, label, guide_text, sort_order), composition_measurements (session_id, athlete_id, point_id, value, unit default cm, value_cm, captured_at), dan composition_photos (session_id, athlete_id, side, storage_key, content_type, byte_size, width_px, height_px, captured_at). Menambahkan foreign key ON DELETE cascade ke athlete_profiles dan body_composition_sessions, ON DELETE restrict dari composition_measurements ke circumference_points, unique index pada circumference_points(code), composition_measurements(session_id, point_id), composition_photos(session_id, side), serta index pencarian per atlet pada captured_at dan per titik."
+  },
+  "apps/api/drizzle/meta/0001_snapshot.json": {
+    "summary": "Snapshot skema drizzle-kit (versi 7) setelah migrasi 0001_body_composition: definisi lengkap kolom, tipe, default, foreign key, dan index untuk seluruh tabel di schema public termasuk empat tabel komposisi tubuh baru. Dipakai drizzle-kit untuk menghitung diff pada migrasi berikutnya; tidak diedit manual."
   }
 }
