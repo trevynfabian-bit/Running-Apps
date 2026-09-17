@@ -20,6 +20,8 @@ import {
   captureProgress,
   missingSides,
   fromCentimetres,
+  isPlausibleCircumference,
+  toCentimetres,
   validateSessionDraft,
   type CompositionSide,
   type CompositionPhotoDraft,
@@ -639,6 +641,12 @@ export function MeasurementRow({
     onChange(parseMeasurementInput(raw));
   };
 
+  // Said, not swallowed. A value the form refuses to store without explaining
+  // itself reads as a broken keyboard, and the usual cause is a slipped decimal
+  // point or a number typed while the wrong unit was selected.
+  const typed = parseMeasurementInput(text);
+  const outOfRange = typed !== undefined && !isPlausibleCircumference(toCentimetres(typed, unit));
+
   return (
     <Card>
       <Stack gap={spacing.sm}>
@@ -667,7 +675,7 @@ export function MeasurementRow({
                 paddingHorizontal: spacing.md,
                 borderRadius: radius.md,
                 borderWidth: StyleSheet.hairlineWidth,
-                borderColor: theme.color.border,
+                borderColor: outOfRange ? theme.color.negative : theme.color.border,
                 backgroundColor: theme.color.surfaceRaised,
                 color: theme.color.text,
                 textAlign: 'right',
@@ -679,6 +687,12 @@ export function MeasurementRow({
             </Type>
           </Stack>
         </Stack>
+
+        {outOfRange ? (
+          <Type variant="caption" tone="negative">
+            That is not a circumference a tape would read. Check the decimal point and the unit.
+          </Type>
+        ) : null}
 
         {open ? (
           <Type variant="caption" tone="secondary">

@@ -17,7 +17,7 @@
  * only things standing between this flow and a real session.
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, View } from 'react-native';
 import { router } from 'expo-router';
 
@@ -54,6 +54,7 @@ import {
 } from '../../src/lib/composition-capture';
 import { saveSession, type SavedCompositionSession } from '../../src/lib/composition-store';
 import { UNIT_LABELS } from '../../src/lib/composition-measurement';
+import { loadMeasurementUnit, saveMeasurementUnit } from '../../src/lib/composition-preferences';
 import { spacing } from '../../src/design/tokens';
 import {
   Button,
@@ -117,9 +118,10 @@ export default function CompositionSessionScreen(): React.ReactElement {
   // that just landed, and cleared by every way of leaving that angle.
   const [pendingSide, setPendingSide] = useState<CompositionSide>();
   const [saved, setSaved] = useState<SavedCompositionSession>();
-  // Centimetres by default: it is what a tape sold anywhere reads, and the unit
-  // every stored value is held in regardless.
-  const [unit, setUnit] = useState<MeasurementUnit>('cm');
+  // Centimetres until the stored preference says otherwise. It is what a tape
+  // sold anywhere reads, and the unit every value is held in regardless, so
+  // starting there is safe even if the preference never arrives.
+  const [unit, setUnitState] = useState<MeasurementUnit>('cm');
   // One point's guidance at a time. Opens on focus, so the instruction is there
   // the moment the athlete is about to type a number into that field.
   const [openPoint, setOpenPoint] = useState<CircumferencePointCode>();
@@ -229,19 +231,41 @@ export default function CompositionSessionScreen(): React.ReactElement {
     ]);
   };
 
+  // Loaded once for the session. Switching units mid-session is a display
+  // change, so a late arrival cannot corrupt anything already typed.
+  useEffect(() => {
+    let current = true;
+    void loadMeasurementUnit().then((stored) => {
+      if (current) setUnitState(stored);
+    });
+    return () => {
+      current = false;
+    };
+  }, []);
+
+  /** Switch units and remember it, so the next session opens the same way. */
+  const setUnit = (next: MeasurementUnit): void => {
+    setUnitState(next);
+    void saveMeasurementUnit(next);
+  };
+
   /**
-   * Take a typed reading, or clear the point when the field is emptied.
+   * Take a typed reading, or clear the point when the field is emptied or holds
+   * something no tape would read.
    *
-   * An implausible value is dropped rather than stored: the athlete is mid-type
-   * and a half-finished number is not a correction to keep.
+   * Clearing rather than keeping the last good value matters: a field showing
+   * "840" over a stored 84 would let the athlete leave believing they had
+   * corrected it. The row says why it is refused; the session records nothing
+   * until it is a number again.
    */
   const recordMeasurement = (point: CircumferencePointCode, value: number | undefined): void => {
-    if (value === undefined) {
+    const centimetres = value === undefined ? undefined : toCentimetres(value, unit);
+
+    if (centimetres === undefined || !isPlausibleCircumference(centimetres)) {
       setDraft(removeMeasurement(draft, point));
       return;
     }
-    const centimetres = toCentimetres(value, unit);
-    if (!isPlausibleCircumference(centimetres)) return;
+
     setDraft(
       putMeasurement(draft, { point, centimetres, enteredUnit: unit, recordedAt: new Date() }),
     );
@@ -518,10 +542,10 @@ export default function CompositionSessionScreen(): React.ReactElement {
             <Card>
               <Stack gap={spacing.md}>
                 <Stack direction="row" justify="space-between" align="center">
-                  <Stack gap={2}>
+                  <Stack gap={2} style={{ flex: 1 }}>
                     <Type variant="bodyStrong">Units</Type>
                     <Type variant="caption" tone="tertiary">
-                      Stored the same way whichever you pick.
+                      Stored the same way whichever you pick. Remembered for next time.
                     </Type>
                   </Stack>
                   <Stack direction="row" gap={spacing.sm}>
