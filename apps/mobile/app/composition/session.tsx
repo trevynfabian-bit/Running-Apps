@@ -80,14 +80,20 @@ export default function CompositionSessionScreen(): React.ReactElement {
   // The angle being looked at full size, if any. Separate from `activeSide`:
   // inspecting an angle is not the same as deciding to reshoot it.
   const [previewSide, setPreviewSide] = useState<CompositionSide>();
+  // The angle whose shot is waiting to be kept or redone. Set only by a capture
+  // that just landed, and cleared by every way of leaving that angle.
+  const [pendingSide, setPendingSide] = useState<CompositionSide>();
 
   const progress = captureProgress(draft);
   const taken = capturedSides(draft);
   const activePhoto = photoForSide(draft, activeSide);
+  /** A shot has just landed on the angle on screen and has not been accepted. */
+  const awaitingDecision = pendingSide === activeSide && activePhoto !== undefined;
 
   const openCapture = (side: CompositionSide): void => {
     setActiveSide(side);
     setCaptureError(undefined);
+    setPendingSide(undefined);
     setStep('capture');
   };
 
@@ -106,6 +112,26 @@ export default function CompositionSessionScreen(): React.ReactElement {
   const closeGuide = (): void => {
     setStep(guideReturn ?? 'capture');
     setGuideReturn(undefined);
+  };
+
+  /** Accept the shot and move on: the next outstanding angle, or the review. */
+  const keepShot = (): void => {
+    setPendingSide(undefined);
+    const remaining = nextSideToCapture(draft);
+    if (remaining) setActiveSide(remaining);
+    else setStep('review');
+  };
+
+  /**
+   * Go back to the two sources for another attempt at this angle.
+   *
+   * The shot stays in the draft on purpose. If the athlete then backs out of
+   * the picker they still have the one they took, rather than an angle that was
+   * fine a moment ago and is now empty.
+   */
+  const redoShot = (): void => {
+    setPendingSide(undefined);
+    setCaptureError(undefined);
   };
 
   const stepPreview = (delta: -1 | 1): void => {
@@ -137,14 +163,12 @@ export default function CompositionSessionScreen(): React.ReactElement {
         return;
       }
 
-      const next = putPhoto(draft, { side: activeSide, uri: outcome.uri, capturedAt: new Date() });
-      setDraft(next);
+      setDraft(putPhoto(draft, { side: activeSide, uri: outcome.uri, capturedAt: new Date() }));
 
-      // Move the athlete along rather than leaving them on a shot they just
-      // took: the next gap, or the review once there are none.
-      const remaining = nextSideToCapture(next);
-      if (remaining) setActiveSide(remaining);
-      else setStep('review');
+      // Stay on the angle rather than advancing. A shot that is soft or badly
+      // framed is worth one more attempt now; finding out at the review, or in
+      // six weeks, costs more than the tap this asks for.
+      setPendingSide(activeSide);
     } finally {
       setBusy(undefined);
     }
@@ -259,35 +283,58 @@ export default function CompositionSessionScreen(): React.ReactElement {
               <SidePhotoTile side={activeSide} photo={activePhoto} />
             </View>
 
-            {/* Both sources stay on screen at all times. Which one is right
-                depends on whether the athlete is alone, and that changes
-                between angles, not between sessions. */}
-            <Stack gap={spacing.md}>
-              {CAPTURE_SOURCES.map((source, index) => (
-                <Stack key={source.method} gap={spacing.xs}>
-                  <Button
-                    label={activePhoto ? source.retakeLabel : source.label}
-                    variant={index === 0 ? 'primary' : 'secondary'}
-                    onPress={() => void take(source.method)}
-                    loading={busy === source.method}
-                    disabled={busy !== undefined}
-                  />
-                  <Type variant="caption" tone="tertiary" style={{ textAlign: 'center' }}>
-                    {source.hint}
+            {awaitingDecision ? (
+              <Stack gap={spacing.md}>
+                <Stack gap={spacing.xs}>
+                  <Type variant="bodyStrong">Keep this one?</Type>
+                  <Type variant="caption" tone="secondary">
+                    Check it against the framing above before you move on. Only this angle is
+                    affected either way.
                   </Type>
                 </Stack>
-              ))}
+                <Button label="Use it" onPress={keepShot} />
+                <Button label="Retake this angle" variant="secondary" onPress={redoShot} />
+                <Button
+                  label="See it full size"
+                  variant="ghost"
+                  onPress={() => setPreviewSide(activeSide)}
+                />
+              </Stack>
+            ) : (
+              /* Both sources stay on screen at all times. Which one is right
+                 depends on whether the athlete is alone, and that changes
+                 between angles, not between sessions. */
+              <Stack gap={spacing.md}>
+                {CAPTURE_SOURCES.map((source, index) => (
+                  <Stack key={source.method} gap={spacing.xs}>
+                    <Button
+                      label={activePhoto ? source.retakeLabel : source.label}
+                      variant={index === 0 ? 'primary' : 'secondary'}
+                      onPress={() => void take(source.method)}
+                      loading={busy === source.method}
+                      disabled={busy !== undefined}
+                    />
+                    <Type variant="caption" tone="tertiary" style={{ textAlign: 'center' }}>
+                      {source.hint}
+                    </Type>
+                  </Stack>
+                ))}
 
-              {captureError ? (
-                <Type variant="caption" tone="negative">
-                  {captureError}
-                </Type>
-              ) : null}
+                {captureError ? (
+                  <Type variant="caption" tone="negative">
+                    {captureError}
+                  </Type>
+                ) : null}
 
-              {isSessionComplete(draft) ? (
-                <Button label="Review all four" variant="ghost" onPress={() => setStep('review')} />
-              ) : null}
-            </Stack>
+                {isSessionComplete(draft) ? (
+                  <Button
+                    label="Review all four"
+                    variant="ghost"
+                    onPress={() => setStep('review')}
+                  />
+                ) : null}
+              </Stack>
+            )}
 
             <Stack>
               <SectionHeader title="This session" />
@@ -300,7 +347,9 @@ export default function CompositionSessionScreen(): React.ReactElement {
                       side={side}
                       photo={photo}
                       caption={photo ? describeCapture(photo) : undefined}
-                      onPress={() => setActiveSide(side)}
+                      // Through openCapture so switching angle also drops any
+                      // decision pending on the one being left.
+                      onPress={() => openCapture(side)}
                     />
                   );
                 })}
