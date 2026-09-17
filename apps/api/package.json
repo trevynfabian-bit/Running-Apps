@@ -6,12 +6,12 @@
   "description": "Backend API: providers, sync, coaching services.",
   "main": "./src/index.ts",
   "scripts": {
-    "dev": "node --import tsx/esm --watch src/index.ts",
-    "start": "node --import tsx/esm src/index.ts",
+    "dev": "node --env-file-if-exists=.env --import tsx/esm --watch src/index.ts",
+    "start": "node --env-file-if-exists=.env --import tsx/esm src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "db:migrate": "node --import tsx/esm src/db/migrate.ts",
-    "db:seed": "node --import tsx/esm src/seed/index.ts"
+    "db:migrate": "node --env-file-if-exists=.env --import tsx/esm src/db/migrate.ts",
+    "db:seed": "node --env-file-if-exists=.env --import tsx/esm src/seed/index.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.5",
