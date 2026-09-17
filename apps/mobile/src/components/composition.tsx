@@ -17,8 +17,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   COMPOSITION_SIDES,
   COMPOSITION_SIDE_LABELS,
+  captureProgress,
+  missingSides,
   type CompositionSide,
   type CompositionPhotoDraft,
+  type CompositionSessionDraft,
 } from '@running/core';
 
 import { radius, spacing } from '../design/tokens';
@@ -425,5 +428,81 @@ function PreviewStep({
         {glyph}
       </Type>
     </Pressable>
+  );
+}
+
+const MONTHS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+] as const;
+
+function formatSessionDate(at: Date): string {
+  return `${at.getDate()} ${MONTHS[at.getMonth()] ?? ''} ${at.getFullYear()}`;
+}
+
+/** "Back", "Back and Right side", "Back, Left side and Right side". */
+function listSides(sides: readonly CompositionSide[]): string {
+  const labels = sides.map((side) => COMPOSITION_SIDE_LABELS[side]);
+  if (labels.length <= 1) return labels[0] ?? '';
+  return `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`;
+}
+
+/**
+ * What this session holds, stated rather than left to be counted.
+ *
+ * The grid below it shows which angles are there; this says what that adds up
+ * to. Naming the outstanding angles matters more than the count does — "two
+ * missing" sends the athlete back to the grid to work out which two.
+ *
+ * The time span is here because it is the one thing the photos cannot show. Four
+ * angles taken minutes apart are one session; four taken hours apart are four
+ * different sets of light, and that is worth noticing before saving them as a
+ * single point of comparison.
+ */
+export function ReviewSummary({ draft }: { draft: CompositionSessionDraft }): React.ReactElement {
+  const progress = captureProgress(draft);
+  const missing = missingSides(draft);
+  const complete = missing.length === 0;
+
+  const times = draft.photos.map((photo) => photo.capturedAt.getTime());
+  const first = times.length > 0 ? Math.min(...times) : undefined;
+  const last = times.length > 0 ? Math.max(...times) : undefined;
+  const spansTime = first !== undefined && last !== undefined && last - first >= 60_000;
+
+  return (
+    <Card>
+      <Stack gap={spacing.sm}>
+        <Type variant="overline" tone="tertiary">
+          SESSION · {formatSessionDate(draft.startedAt).toUpperCase()}
+        </Type>
+
+        <Type variant="bodyStrong" tone={complete ? 'default' : 'caution'}>
+          {progress.captured} of {progress.total} angles
+        </Type>
+
+        {complete ? null : (
+          <Type variant="caption" tone="secondary">
+            Still to take: {listSides(missing)}.
+          </Type>
+        )}
+
+        {spansTime && first !== undefined && last !== undefined ? (
+          <Type variant="caption" tone="tertiary">
+            Taken between {formatTimeOfDay(new Date(first))} and {formatTimeOfDay(new Date(last))}.
+            Angles taken well apart catch different light.
+          </Type>
+        ) : null}
+      </Stack>
+    </Card>
   );
 }

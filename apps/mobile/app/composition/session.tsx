@@ -45,6 +45,7 @@ import {
   CaptureProgress,
   SessionSetupGuide,
   SideGuidanceCard,
+  ReviewSummary,
   SidePhotoPreview,
   SidePhotoTile,
   describeCapture,
@@ -89,6 +90,8 @@ export default function CompositionSessionScreen(): React.ReactElement {
   const activePhoto = photoForSide(draft, activeSide);
   /** A shot has just landed on the angle on screen and has not been accepted. */
   const awaitingDecision = pendingSide === activeSide && activePhoto !== undefined;
+  /** The first outstanding angle, or undefined once all four are taken. */
+  const nextGap = nextSideToCapture(draft);
 
   const openCapture = (side: CompositionSide): void => {
     setActiveSide(side);
@@ -244,10 +247,7 @@ export default function CompositionSessionScreen(): React.ReactElement {
               />
             ) : (
               <Stack gap={spacing.sm}>
-                <Button
-                  label="Start capturing"
-                  onPress={() => openCapture(nextSideToCapture(draft) ?? 'front')}
-                />
+                <Button label="Start capturing" onPress={() => openCapture(nextGap ?? 'front')} />
                 <Button label="Not now" variant="ghost" onPress={leave} />
               </Stack>
             )}
@@ -368,12 +368,7 @@ export default function CompositionSessionScreen(): React.ReactElement {
               </Type>
             </Stack>
 
-            <CaptureProgress
-              captured={progress.captured}
-              total={progress.total}
-              sides={COMPOSITION_SIDES}
-              capturedSides={taken}
-            />
+            <ReviewSummary draft={draft} />
 
             <SectionHeader
               title="Your four angles"
@@ -401,12 +396,12 @@ export default function CompositionSessionScreen(): React.ReactElement {
 
             <Stack gap={spacing.sm}>
               <Button
-                label={isSessionComplete(draft) ? 'Save session' : 'Capture the rest'}
-                onPress={
-                  isSessionComplete(draft)
-                    ? finish
-                    : () => openCapture(nextSideToCapture(draft) ?? 'front')
+                label={
+                  nextGap
+                    ? `Take the ${COMPOSITION_SIDE_LABELS[nextGap].toLowerCase()}`
+                    : 'Save session'
                 }
+                onPress={nextGap ? () => openCapture(nextGap) : finish}
               />
               <Button label="Discard" variant="ghost" onPress={leave} />
             </Stack>
