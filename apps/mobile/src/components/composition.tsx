@@ -23,6 +23,7 @@ import { radius, spacing } from '../design/tokens';
 import { useTheme } from '../design/theme';
 import { Card, Stack, Type } from './primitives';
 import { isStubPhotoUri, stubCaptureMethod } from '../lib/composition-capture';
+import { SESSION_SETUP, SIDE_GUIDANCE } from '../lib/composition-guidance';
 
 /** Portrait. A standing body fits this far better than a square crop. */
 const ASPECT_RATIO = 3 / 4;
@@ -180,5 +181,79 @@ export function CaptureProgress({
         ))}
       </Stack>
     </Stack>
+  );
+}
+
+/**
+ * The setup checklist, shown before the first angle.
+ *
+ * Numbered rather than bulleted: these are done in order, and the athlete is
+ * working through them with a phone propped against something.
+ */
+export function SessionSetupGuide(): React.ReactElement {
+  const theme = useTheme();
+
+  return (
+    <Card>
+      <Stack gap={spacing.lg}>
+        {SESSION_SETUP.map((item, index) => (
+          <Stack key={item.title} direction="row" gap={spacing.md}>
+            <View
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: radius.pill,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: theme.color.borderStrong,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Type variant="caption" tone="secondary">
+                {index + 1}
+              </Type>
+            </View>
+            <Stack gap={2} style={{ flex: 1 }}>
+              <Type variant="bodyStrong">{item.title}</Type>
+              <Type variant="caption" tone="secondary">
+                {item.detail}
+              </Type>
+            </Stack>
+          </Stack>
+        ))}
+      </Stack>
+    </Card>
+  );
+}
+
+/**
+ * Stance and framing for one angle.
+ *
+ * `compact` drops the heading for use on the capture screen, where the angle is
+ * already the screen's title and repeating it pushes the viewfinder down.
+ */
+export function SideGuidanceCard({
+  side,
+  compact = false,
+}: {
+  side: CompositionSide;
+  compact?: boolean;
+}): React.ReactElement {
+  const guidance = SIDE_GUIDANCE[side];
+
+  return (
+    <Card>
+      <Stack gap={spacing.sm}>
+        {compact ? null : <Type variant="bodyStrong">{COMPOSITION_SIDE_LABELS[side]}</Type>}
+        <Stack gap={spacing.xs}>
+          <Type variant="caption" tone="secondary">
+            {guidance.stance}
+          </Type>
+          <Type variant="caption" tone="secondary">
+            {guidance.framing}
+          </Type>
+        </Stack>
+      </Stack>
+    </Card>
   );
 }

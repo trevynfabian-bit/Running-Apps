@@ -37,22 +37,14 @@ import {
 import { capturePhoto, type CaptureMethod } from '../../src/lib/composition-capture';
 import { spacing } from '../../src/design/tokens';
 import { Button, Card, Screen, SectionHeader, Stack, Type } from '../../src/components/primitives';
-import { CaptureProgress, SidePhotoTile } from '../../src/components/composition';
+import {
+  CaptureProgress,
+  SessionSetupGuide,
+  SideGuidanceCard,
+  SidePhotoTile,
+} from '../../src/components/composition';
 
 type Step = 'guide' | 'capture' | 'review';
-
-/**
- * One line per angle, shown while that angle is being framed.
- *
- * Deliberately short. The fuller standing-distance and lighting guidance is its
- * own screen; this is the reminder at the moment of taking the shot.
- */
-const FRAMING: Readonly<Record<CompositionSide, string>> = {
-  front: 'Face the camera square on. Arms slightly away from your sides.',
-  back: 'Turn to face directly away, same stance and same spot.',
-  left: 'Quarter turn to your left. Arms relaxed, hanging naturally.',
-  right: 'Quarter turn to your right. Arms relaxed, hanging naturally.',
-};
 
 export default function CompositionSessionScreen(): React.ReactElement {
   const [step, setStep] = useState<Step>('guide');
@@ -118,23 +110,25 @@ export default function CompositionSessionScreen(): React.ReactElement {
             <Stack gap={spacing.xs}>
               <Type variant="title">Four angles, same way each time</Type>
               <Type variant="body" tone="secondary">
-                These photos are only worth taking if they are comparable. Same spot, same distance,
-                same light, and the camera held at roughly waist height.
+                These photos are only worth taking if they can be compared. Over the weeks where a
+                real change is a couple of centimetres, how you set the shot up matters more than it
+                sounds like it should.
               </Type>
             </Stack>
 
-            <Card>
-              <Stack gap={spacing.md}>
+            <Stack>
+              <SectionHeader title="Before you start" />
+              <SessionSetupGuide />
+            </Stack>
+
+            <Stack>
+              <SectionHeader title="The four angles" />
+              <Stack gap={spacing.sm}>
                 {COMPOSITION_SIDES.map((side) => (
-                  <Stack key={side} gap={2}>
-                    <Type variant="bodyStrong">{COMPOSITION_SIDE_LABELS[side]}</Type>
-                    <Type variant="caption" tone="secondary">
-                      {FRAMING[side]}
-                    </Type>
-                  </Stack>
+                  <SideGuidanceCard key={side} side={side} />
                 ))}
               </Stack>
-            </Card>
+            </Stack>
 
             <Card>
               <Type variant="caption" tone="tertiary">
@@ -159,10 +153,9 @@ export default function CompositionSessionScreen(): React.ReactElement {
                 ANGLE {COMPOSITION_SIDES.indexOf(activeSide) + 1} OF {COMPOSITION_SIDES.length}
               </Type>
               <Type variant="title">{COMPOSITION_SIDE_LABELS[activeSide]}</Type>
-              <Type variant="body" tone="secondary">
-                {FRAMING[activeSide]}
-              </Type>
             </Stack>
+
+            <SideGuidanceCard side={activeSide} compact />
 
             <CaptureProgress
               captured={progress.captured}
