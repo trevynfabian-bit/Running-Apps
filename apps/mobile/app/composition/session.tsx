@@ -27,6 +27,7 @@ import {
   captureProgress,
   capturedSides,
   createSessionDraft,
+  canSaveSessionDraft,
   isSessionComplete,
   nextSideToCapture,
   photoForSide,
@@ -46,6 +47,7 @@ import {
   SessionSetupGuide,
   SideGuidanceCard,
   ReviewSummary,
+  SaveBlockers,
   SidePhotoPreview,
   SidePhotoTile,
   describeCapture,
@@ -92,6 +94,7 @@ export default function CompositionSessionScreen(): React.ReactElement {
   const awaitingDecision = pendingSide === activeSide && activePhoto !== undefined;
   /** The first outstanding angle, or undefined once all four are taken. */
   const nextGap = nextSideToCapture(draft);
+  const canSave = canSaveSessionDraft(draft);
 
   const openCapture = (side: CompositionSide): void => {
     setActiveSide(side);
@@ -395,14 +398,21 @@ export default function CompositionSessionScreen(): React.ReactElement {
             </Stack>
 
             <Stack gap={spacing.sm}>
-              <Button
-                label={
-                  nextGap
-                    ? `Take the ${COMPOSITION_SIDE_LABELS[nextGap].toLowerCase()}`
-                    : 'Save session'
-                }
-                onPress={nextGap ? () => openCapture(nextGap) : finish}
-              />
+              <SaveBlockers draft={draft} />
+
+              {/* Save stays on screen and greys out, rather than being swapped
+                  for whatever is missing. The athlete is here to save; hiding
+                  the button makes them work out whether they are allowed to. */}
+              <Button label="Save session" onPress={finish} disabled={!canSave} />
+
+              {nextGap ? (
+                <Button
+                  label={`Take the ${COMPOSITION_SIDE_LABELS[nextGap].toLowerCase()}`}
+                  variant="secondary"
+                  onPress={() => openCapture(nextGap)}
+                />
+              ) : null}
+
               <Button label="Discard" variant="ghost" onPress={leave} />
             </Stack>
           </Stack>

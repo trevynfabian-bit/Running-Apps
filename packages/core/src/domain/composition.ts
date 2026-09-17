@@ -122,3 +122,45 @@ function inSideOrder(photos: readonly CompositionPhotoDraft[]): CompositionPhoto
     (a, b) => COMPOSITION_SIDES.indexOf(a.side) - COMPOSITION_SIDES.indexOf(b.side),
   );
 }
+
+/**
+ * Why a draft cannot be saved yet.
+ *
+ * Reported as a list rather than a first failure: the athlete should see
+ * everything standing between them and a saved session in one go, not discover
+ * the next problem after fixing this one.
+ *
+ * Codes, not sentences. The wording belongs to whatever is showing it.
+ */
+export type SessionDraftProblem =
+  | { kind: 'missing_sides'; sides: readonly CompositionSide[] }
+  /** A picker handed back something that is not a usable reference. */
+  | { kind: 'unusable_photo'; side: CompositionSide };
+
+/**
+ * Everything wrong with a draft, in the order it is worth fixing.
+ *
+ * An empty list means the session is ready to save.
+ */
+export function validateSessionDraft(
+  draft: CompositionSessionDraft,
+): readonly SessionDraftProblem[] {
+  const problems: SessionDraftProblem[] = [];
+
+  const missing = missingSides(draft);
+  if (missing.length > 0) problems.push({ kind: 'missing_sides', sides: missing });
+
+  // Checked rather than assumed: a cancelled or partly failed pick can resolve
+  // to a blank reference, and a session saved around one loses that angle
+  // silently — which is the one failure mode this whole flow exists to avoid.
+  for (const side of COMPOSITION_SIDES) {
+    const photo = photoForSide(draft, side);
+    if (photo && photo.uri.trim() === '') problems.push({ kind: 'unusable_photo', side });
+  }
+
+  return problems;
+}
+
+export function canSaveSessionDraft(draft: CompositionSessionDraft): boolean {
+  return validateSessionDraft(draft).length === 0;
+}

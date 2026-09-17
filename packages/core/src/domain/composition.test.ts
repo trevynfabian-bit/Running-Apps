@@ -7,9 +7,11 @@ import {
   isSessionComplete,
   missingSides,
   nextSideToCapture,
+  canSaveSessionDraft,
   photoForSide,
   putPhoto,
   removePhoto,
+  validateSessionDraft,
   type CompositionSessionDraft,
   type CompositionSide,
 } from './composition.js';
@@ -128,5 +130,53 @@ describe('immutability', () => {
     expect(withFront).not.toBe(draft);
     expect(removePhoto(withFront, 'front').photos).toEqual([]);
     expect(withFront.photos).toHaveLength(1);
+  });
+});
+
+describe('validateSessionDraft', () => {
+  it('reports every outstanding angle in one problem, in capture order', () => {
+    const draft = capture(createSessionDraft(startedAt), 'left');
+
+    expect(validateSessionDraft(draft)).toEqual([
+      { kind: 'missing_sides', sides: ['front', 'back', 'right'] },
+    ]);
+    expect(canSaveSessionDraft(draft)).toBe(false);
+  });
+
+  it('clears once all four angles are present', () => {
+    let draft = createSessionDraft(startedAt);
+    for (const side of COMPOSITION_SIDES) draft = capture(draft, side);
+
+    expect(validateSessionDraft(draft)).toEqual([]);
+    expect(canSaveSessionDraft(draft)).toBe(true);
+  });
+
+  it('rejects a blank photo reference even when all four sides exist', () => {
+    let draft = createSessionDraft(startedAt);
+    for (const side of COMPOSITION_SIDES) draft = capture(draft, side);
+    draft = capture(draft, 'back', '   ');
+
+    expect(validateSessionDraft(draft)).toEqual([{ kind: 'unusable_photo', side: 'back' }]);
+    expect(canSaveSessionDraft(draft)).toBe(false);
+  });
+
+  it('reports a missing angle and an unusable one together', () => {
+    let draft = createSessionDraft(startedAt);
+    for (const side of ['front', 'back', 'left'] as const) draft = capture(draft, side);
+    draft = capture(draft, 'front', '');
+
+    expect(validateSessionDraft(draft)).toEqual([
+      { kind: 'missing_sides', sides: ['right'] },
+      { kind: 'unusable_photo', side: 'front' },
+    ]);
+  });
+
+  it('refuses an empty draft', () => {
+    const draft = createSessionDraft(startedAt);
+
+    expect(canSaveSessionDraft(draft)).toBe(false);
+    expect(validateSessionDraft(draft)).toEqual([
+      { kind: 'missing_sides', sides: ['front', 'back', 'left', 'right'] },
+    ]);
   });
 });

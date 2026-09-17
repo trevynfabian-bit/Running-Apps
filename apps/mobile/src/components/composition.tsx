@@ -19,9 +19,11 @@ import {
   COMPOSITION_SIDE_LABELS,
   captureProgress,
   missingSides,
+  validateSessionDraft,
   type CompositionSide,
   type CompositionPhotoDraft,
   type CompositionSessionDraft,
+  type SessionDraftProblem,
 } from '@running/core';
 
 import { radius, spacing } from '../design/tokens';
@@ -461,8 +463,8 @@ function listSides(sides: readonly CompositionSide[]): string {
  * What this session holds, stated rather than left to be counted.
  *
  * The grid below it shows which angles are there; this says what that adds up
- * to. Naming the outstanding angles matters more than the count does — "two
- * missing" sends the athlete back to the grid to work out which two.
+ * to. What is still outstanding is named by `SaveBlockers`, next to the button
+ * it is blocking, rather than said twice.
  *
  * The time span is here because it is the one thing the photos cannot show. Four
  * angles taken minutes apart are one session; four taken hours apart are four
@@ -471,8 +473,7 @@ function listSides(sides: readonly CompositionSide[]): string {
  */
 export function ReviewSummary({ draft }: { draft: CompositionSessionDraft }): React.ReactElement {
   const progress = captureProgress(draft);
-  const missing = missingSides(draft);
-  const complete = missing.length === 0;
+  const complete = missingSides(draft).length === 0;
 
   const times = draft.photos.map((photo) => photo.capturedAt.getTime());
   const first = times.length > 0 ? Math.min(...times) : undefined;
@@ -490,12 +491,6 @@ export function ReviewSummary({ draft }: { draft: CompositionSessionDraft }): Re
           {progress.captured} of {progress.total} angles
         </Type>
 
-        {complete ? null : (
-          <Type variant="caption" tone="secondary">
-            Still to take: {listSides(missing)}.
-          </Type>
-        )}
-
         {spansTime && first !== undefined && last !== undefined ? (
           <Type variant="caption" tone="tertiary">
             Taken between {formatTimeOfDay(new Date(first))} and {formatTimeOfDay(new Date(last))}.
@@ -505,4 +500,54 @@ export function ReviewSummary({ draft }: { draft: CompositionSessionDraft }): Re
       </Stack>
     </Card>
   );
+}
+
+/**
+ * What is standing between this draft and a saved session.
+ *
+ * Renders nothing when the draft validates, so the review reads clean the
+ * moment it is ready. Every problem is listed rather than only the first: a
+ * disabled Save button with one reason under it invites the athlete to fix that
+ * reason and find the button still disabled.
+ *
+ * The wording lives here because `@running/core` reports problem codes and has
+ * no business holding sentences.
+ */
+export function SaveBlockers({
+  draft,
+}: {
+  draft: CompositionSessionDraft;
+}): React.ReactElement | null {
+  const problems = validateSessionDraft(draft);
+  if (problems.length === 0) return null;
+
+  return (
+    <Card>
+      <Stack gap={spacing.sm}>
+        <Type variant="bodyStrong" tone="caution">
+          Not ready to save yet
+        </Type>
+        {problems.map((problem) => (
+          <Type key={problemKey(problem)} variant="caption" tone="secondary">
+            {describeProblem(problem)}
+          </Type>
+        ))}
+      </Stack>
+    </Card>
+  );
+}
+
+function problemKey(problem: SessionDraftProblem): string {
+  return problem.kind === 'missing_sides'
+    ? `missing-${problem.sides.join('-')}`
+    : `unusable-${problem.side}`;
+}
+
+function describeProblem(problem: SessionDraftProblem): string {
+  if (problem.kind === 'missing_sides') {
+    return problem.sides.length === 1
+      ? `The ${listSides(problem.sides).toLowerCase()} has not been taken.`
+      : `Still to take: ${listSides(problem.sides)}.`;
+  }
+  return `The ${COMPOSITION_SIDE_LABELS[problem.side].toLowerCase()} photo did not come through. Take it again.`;
 }
