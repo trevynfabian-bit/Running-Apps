@@ -46,11 +46,17 @@ import {
 
 type Step = 'guide' | 'capture' | 'review';
 
+/** The steps the guidance can be opened from, and returned to. */
+type CaptureStep = Exclude<Step, 'guide'>;
+
 export default function CompositionSessionScreen(): React.ReactElement {
   const [step, setStep] = useState<Step>('guide');
   const [draft, setDraft] = useState(() => createSessionDraft(new Date()));
   const [activeSide, setActiveSide] = useState<CompositionSide>('front');
   const [busy, setBusy] = useState<CaptureMethod>();
+  // Set only while the guidance is being re-read mid-session. Its presence is
+  // what tells the guide step it is a detour rather than the way in.
+  const [guideReturn, setGuideReturn] = useState<CaptureStep>();
 
   const progress = captureProgress(draft);
   const taken = capturedSides(draft);
@@ -59,6 +65,23 @@ export default function CompositionSessionScreen(): React.ReactElement {
   const openCapture = (side: CompositionSide): void => {
     setActiveSide(side);
     setStep('capture');
+  };
+
+  /**
+   * Re-read the guidance mid-session.
+   *
+   * Nothing is reset on the way in or out. The draft, the angle being worked
+   * on and the step to come back to all survive, because someone checking how
+   * far back to stand is asking a question, not starting over.
+   */
+  const openGuide = (from: CaptureStep): void => {
+    setGuideReturn(from);
+    setStep('guide');
+  };
+
+  const closeGuide = (): void => {
+    setStep(guideReturn ?? 'capture');
+    setGuideReturn(undefined);
   };
 
   const take = async (method: CaptureMethod): Promise<void> => {
@@ -114,10 +137,16 @@ export default function CompositionSessionScreen(): React.ReactElement {
                 real change is a couple of centimetres, how you set the shot up matters more than it
                 sounds like it should.
               </Type>
+              {guideReturn && progress.captured > 0 ? (
+                <Type variant="caption" tone="tertiary">
+                  {progress.captured} of {progress.total} angles are already taken. Reading this
+                  does not change them.
+                </Type>
+              ) : null}
             </Stack>
 
             <Stack>
-              <SectionHeader title="Before you start" />
+              <SectionHeader title={guideReturn ? 'Setting up' : 'Before you start'} />
               <SessionSetupGuide />
             </Stack>
 
@@ -136,13 +165,22 @@ export default function CompositionSessionScreen(): React.ReactElement {
               </Type>
             </Card>
 
-            <Stack gap={spacing.sm}>
+            {/* A detour offers only the way back. Discarding is not something to
+                put in front of someone who came here to re-read an instruction. */}
+            {guideReturn ? (
               <Button
-                label="Start capturing"
-                onPress={() => openCapture(nextSideToCapture(draft) ?? 'front')}
+                label={guideReturn === 'review' ? 'Back to review' : 'Back to capturing'}
+                onPress={closeGuide}
               />
-              <Button label="Not now" variant="ghost" onPress={leave} />
-            </Stack>
+            ) : (
+              <Stack gap={spacing.sm}>
+                <Button
+                  label="Start capturing"
+                  onPress={() => openCapture(nextSideToCapture(draft) ?? 'front')}
+                />
+                <Button label="Not now" variant="ghost" onPress={leave} />
+              </Stack>
+            )}
           </Stack>
         ) : null}
 
@@ -155,7 +193,13 @@ export default function CompositionSessionScreen(): React.ReactElement {
               <Type variant="title">{COMPOSITION_SIDE_LABELS[activeSide]}</Type>
             </Stack>
 
-            <SideGuidanceCard side={activeSide} compact />
+            <Stack>
+              <SectionHeader
+                title="Framing"
+                action={{ label: 'Full guide', onPress: () => openGuide('capture') }}
+              />
+              <SideGuidanceCard side={activeSide} compact />
+            </Stack>
 
             <CaptureProgress
               captured={progress.captured}
@@ -218,6 +262,11 @@ export default function CompositionSessionScreen(): React.ReactElement {
               total={progress.total}
               sides={COMPOSITION_SIDES}
               capturedSides={taken}
+            />
+
+            <SectionHeader
+              title="Your four angles"
+              action={{ label: 'Full guide', onPress: () => openGuide('review') }}
             />
 
             {/* Two by two: the pairs that get compared are front/back and
