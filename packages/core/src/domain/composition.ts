@@ -185,21 +185,35 @@ export function canSaveSessionDraft(draft: CompositionSessionDraft): boolean {
  * beyond display: they are the inputs the circumference-based body fat estimate
  * needs.
  *
+ * Grouped by region so the list can be worked down the body in one pass rather
+ * than jumped around, which is also the order the tape naturally travels.
+ *
  * Codes and labels only. Where to put the tape is instruction, and instruction
  * belongs to whatever is showing it.
  */
+export const CIRCUMFERENCE_REGIONS = ['torso', 'arms', 'legs'] as const;
+
+export type CircumferenceRegion = (typeof CIRCUMFERENCE_REGIONS)[number];
+
 export const CIRCUMFERENCE_POINTS = [
-  { code: 'neck', label: 'Neck' },
-  { code: 'chest', label: 'Chest' },
-  { code: 'waist', label: 'Waist' },
-  { code: 'hips', label: 'Hips' },
-  { code: 'left_arm', label: 'Left arm' },
-  { code: 'right_arm', label: 'Right arm' },
-  { code: 'left_thigh', label: 'Left thigh' },
-  { code: 'right_thigh', label: 'Right thigh' },
+  { code: 'neck', label: 'Neck', region: 'torso' },
+  { code: 'chest', label: 'Chest', region: 'torso' },
+  { code: 'waist', label: 'Waist', region: 'torso' },
+  { code: 'hips', label: 'Hips', region: 'torso' },
+  { code: 'left_arm', label: 'Left arm', region: 'arms' },
+  { code: 'right_arm', label: 'Right arm', region: 'arms' },
+  { code: 'left_thigh', label: 'Left thigh', region: 'legs' },
+  { code: 'right_thigh', label: 'Right thigh', region: 'legs' },
 ] as const;
 
-export type CircumferencePointCode = (typeof CIRCUMFERENCE_POINTS)[number]['code'];
+export type CircumferencePoint = (typeof CIRCUMFERENCE_POINTS)[number];
+
+export type CircumferencePointCode = CircumferencePoint['code'];
+
+/** The points of one region, in registry order. */
+export function pointsInRegion(region: CircumferenceRegion): readonly CircumferencePoint[] {
+  return CIRCUMFERENCE_POINTS.filter((point) => point.region === region);
+}
 
 export type MeasurementUnit = 'cm' | 'in';
 

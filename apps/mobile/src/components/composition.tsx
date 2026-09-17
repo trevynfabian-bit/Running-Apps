@@ -606,11 +606,16 @@ export function MeasurementRow({
   unit,
   measurement,
   onChange,
+  open,
+  onOpen,
 }: {
   point: { code: CircumferencePointCode; label: string };
   unit: MeasurementUnit;
   measurement?: BodyMeasurementDraft;
   onChange: (value: number | undefined) => void;
+  /** Whether this row is showing its tape guidance. */
+  open: boolean;
+  onOpen: () => void;
 }): React.ReactElement {
   const theme = useTheme();
   const stored = measurement
@@ -638,9 +643,14 @@ export function MeasurementRow({
     <Card>
       <Stack gap={spacing.sm}>
         <Stack direction="row" justify="space-between" align="center" gap={spacing.md}>
-          <Type variant="bodyStrong" style={{ flex: 1 }}>
-            {point.label}
-          </Type>
+          <Stack direction="row" align="center" gap={spacing.sm} style={{ flex: 1 }}>
+            <Type variant="bodyStrong">{point.label}</Type>
+            {measurement ? (
+              <Type variant="caption" tone="positive" accessibilityRole="text">
+                recorded
+              </Type>
+            ) : null}
+          </Stack>
 
           <Stack direction="row" align="center" gap={spacing.sm}>
             <TextInput
@@ -649,6 +659,7 @@ export function MeasurementRow({
               placeholder="—"
               placeholderTextColor={theme.color.textTertiary}
               keyboardType="decimal-pad"
+              onFocus={onOpen}
               accessibilityLabel={`${point.label} in ${unit === 'cm' ? 'centimetres' : 'inches'}`}
               style={{
                 minWidth: 88,
@@ -669,9 +680,23 @@ export function MeasurementRow({
           </Stack>
         </Stack>
 
-        <Type variant="caption" tone="secondary">
-          {TAPE_GUIDANCE[point.code]}
-        </Type>
+        {open ? (
+          <Type variant="caption" tone="secondary">
+            {TAPE_GUIDANCE[point.code]}
+          </Type>
+        ) : (
+          <Pressable
+            onPress={onOpen}
+            accessibilityRole="button"
+            accessibilityLabel={`Where to measure the ${point.label.toLowerCase()}`}
+            hitSlop={8}
+            style={{ minHeight: 28, justifyContent: 'center' }}
+          >
+            <Type variant="caption" tone="accent">
+              Where to measure
+            </Type>
+          </Pressable>
+        )}
       </Stack>
     </Card>
   );

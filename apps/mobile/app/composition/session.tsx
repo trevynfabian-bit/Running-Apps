@@ -23,6 +23,7 @@ import { router } from 'expo-router';
 
 import {
   CIRCUMFERENCE_POINTS,
+  CIRCUMFERENCE_REGIONS,
   COMPOSITION_SIDES,
   COMPOSITION_SIDE_LABELS,
   canSaveSessionDraft,
@@ -34,12 +35,14 @@ import {
   measurementFor,
   nextSideToCapture,
   photoForSide,
+  pointsInRegion,
   putMeasurement,
   putPhoto,
   recordedPoints,
   removeMeasurement,
   toCentimetres,
   type CircumferencePointCode,
+  type CircumferenceRegion,
   type CompositionSide,
   type MeasurementUnit,
 } from '@running/core';
@@ -85,6 +88,12 @@ type CaptureStep = Extract<Step, 'capture' | 'review'>;
  * Front against back and left against right: those are the pairs the eye
  * compares, so each pair shares a row.
  */
+const REGION_LABELS: Readonly<Record<CircumferenceRegion, string>> = {
+  torso: 'Torso',
+  arms: 'Arms',
+  legs: 'Legs',
+};
+
 const REVIEW_ROWS: readonly (readonly CompositionSide[])[] = [
   ['front', 'back'],
   ['left', 'right'],
@@ -111,6 +120,9 @@ export default function CompositionSessionScreen(): React.ReactElement {
   // Centimetres by default: it is what a tape sold anywhere reads, and the unit
   // every stored value is held in regardless.
   const [unit, setUnit] = useState<MeasurementUnit>('cm');
+  // One point's guidance at a time. Opens on focus, so the instruction is there
+  // the moment the athlete is about to type a number into that field.
+  const [openPoint, setOpenPoint] = useState<CircumferencePointCode>();
 
   const progress = captureProgress(draft);
   const taken = capturedSides(draft);
@@ -497,6 +509,10 @@ export default function CompositionSessionScreen(): React.ReactElement {
                 Optional, and worth doing. The photos show shape; these are the numbers the
                 comparison can actually subtract.
               </Type>
+              <Type variant="caption" tone="tertiary">
+                {recorded.length} of {CIRCUMFERENCE_POINTS.length} points recorded. Take the ones
+                you will keep taking -- a point measured once tells you nothing later.
+              </Type>
             </Stack>
 
             <Card>
@@ -523,26 +539,27 @@ export default function CompositionSessionScreen(): React.ReactElement {
               </Stack>
             </Card>
 
-            <Stack>
-              <SectionHeader
-                title={
-                  recorded.length === 0
-                    ? 'Points'
-                    : `${recorded.length} of ${CIRCUMFERENCE_POINTS.length} recorded`
-                }
-              />
-              <Stack gap={spacing.sm}>
-                {CIRCUMFERENCE_POINTS.map((point) => (
-                  <MeasurementRow
-                    key={point.code}
-                    point={point}
-                    unit={unit}
-                    measurement={measurementFor(draft, point.code)}
-                    onChange={(value) => recordMeasurement(point.code, value)}
-                  />
-                ))}
+            {/* Grouped and worked down the body, which is the order the tape
+                travels anyway. One region's guidance open at a time keeps the
+                instruction present without turning the list into a wall of it. */}
+            {CIRCUMFERENCE_REGIONS.map((region) => (
+              <Stack key={region}>
+                <SectionHeader title={REGION_LABELS[region]} />
+                <Stack gap={spacing.sm}>
+                  {pointsInRegion(region).map((point) => (
+                    <MeasurementRow
+                      key={point.code}
+                      point={point}
+                      unit={unit}
+                      measurement={measurementFor(draft, point.code)}
+                      onChange={(value) => recordMeasurement(point.code, value)}
+                      open={openPoint === point.code}
+                      onOpen={() => setOpenPoint(point.code)}
+                    />
+                  ))}
+                </Stack>
               </Stack>
-            </Stack>
+            ))}
 
             <Stack gap={spacing.sm}>
               <Button label="Save session" onPress={finish} disabled={!canSave} />

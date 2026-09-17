@@ -8,11 +8,13 @@ import {
   missingSides,
   nextSideToCapture,
   CIRCUMFERENCE_POINTS,
+  CIRCUMFERENCE_REGIONS,
   canSaveSessionDraft,
   fromCentimetres,
   isPlausibleCircumference,
   measurementFor,
   photoForSide,
+  pointsInRegion,
   putPhoto,
   putMeasurement,
   recordedPoints,
@@ -370,6 +372,36 @@ describe('CIRCUMFERENCE_POINTS', () => {
   it('gives every point a label to show', () => {
     for (const point of CIRCUMFERENCE_POINTS) {
       expect(point.label.trim()).not.toBe('');
+    }
+  });
+});
+
+describe('pointsInRegion', () => {
+  it('splits the registry across the regions without losing or duplicating a point', () => {
+    const grouped = CIRCUMFERENCE_REGIONS.flatMap((region) => pointsInRegion(region));
+
+    expect(grouped.map((point) => point.code)).toEqual(
+      CIRCUMFERENCE_POINTS.map((point) => point.code),
+    );
+  });
+
+  it('keeps registry order within a region', () => {
+    expect(pointsInRegion('torso').map((point) => point.code)).toEqual([
+      'neck',
+      'chest',
+      'waist',
+      'hips',
+    ]);
+    expect(pointsInRegion('arms').map((point) => point.code)).toEqual(['left_arm', 'right_arm']);
+    expect(pointsInRegion('legs').map((point) => point.code)).toEqual([
+      'left_thigh',
+      'right_thigh',
+    ]);
+  });
+
+  it('leaves no region empty, which would render a heading with nothing under it', () => {
+    for (const region of CIRCUMFERENCE_REGIONS) {
+      expect(pointsInRegion(region).length).toBeGreaterThan(0);
     }
   });
 });
