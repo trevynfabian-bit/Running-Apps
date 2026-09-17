@@ -34,7 +34,11 @@ import {
   type CompositionSide,
 } from '@running/core';
 
-import { capturePhoto, type CaptureMethod } from '../../src/lib/composition-capture';
+import {
+  CAPTURE_SOURCES,
+  capturePhoto,
+  type CaptureMethod,
+} from '../../src/lib/composition-capture';
 import { spacing } from '../../src/design/tokens';
 import { Button, Card, Screen, SectionHeader, Stack, Type } from '../../src/components/primitives';
 import {
@@ -57,6 +61,9 @@ export default function CompositionSessionScreen(): React.ReactElement {
   // Set only while the guidance is being re-read mid-session. Its presence is
   // what tells the guide step it is a detour rather than the way in.
   const [guideReturn, setGuideReturn] = useState<CaptureStep>();
+  // Cleared by the next attempt, so a refused permission does not sit under a
+  // shot that has since succeeded.
+  const [captureError, setCaptureError] = useState<string>();
 
   const progress = captureProgress(draft);
   const taken = capturedSides(draft);
@@ -64,6 +71,7 @@ export default function CompositionSessionScreen(): React.ReactElement {
 
   const openCapture = (side: CompositionSide): void => {
     setActiveSide(side);
+    setCaptureError(undefined);
     setStep('capture');
   };
 
@@ -86,12 +94,21 @@ export default function CompositionSessionScreen(): React.ReactElement {
 
   const take = async (method: CaptureMethod): Promise<void> => {
     setBusy(method);
+    setCaptureError(undefined);
     try {
-      const uri = await capturePhoto(activeSide, method);
-      // Backing out of the picker means "stay here", not an error to report.
-      if (!uri) return;
+      const outcome = await capturePhoto(activeSide, method);
 
-      const next = putPhoto(draft, { side: activeSide, uri, capturedAt: new Date() });
+      // Backing out of the picker means "stay on this angle", not an error.
+      if (outcome.status === 'cancelled') return;
+
+      if (outcome.status !== 'captured') {
+        // One source failing says nothing about the other, so the choice stays
+        // on screen and the athlete can take the photo the other way.
+        setCaptureError(outcome.message);
+        return;
+      }
+
+      const next = putPhoto(draft, { side: activeSide, uri: outcome.uri, capturedAt: new Date() });
       setDraft(next);
 
       // Move the athlete along rather than leaving them on a shot they just
@@ -213,20 +230,31 @@ export default function CompositionSessionScreen(): React.ReactElement {
               <SidePhotoTile side={activeSide} photo={activePhoto} />
             </View>
 
-            <Stack gap={spacing.sm}>
-              <Button
-                label={activePhoto ? 'Retake with camera' : 'Take photo'}
-                onPress={() => void take('camera')}
-                loading={busy === 'camera'}
-                disabled={busy !== undefined}
-              />
-              <Button
-                label="Choose from library"
-                variant="secondary"
-                onPress={() => void take('library')}
-                loading={busy === 'library'}
-                disabled={busy !== undefined}
-              />
+            {/* Both sources stay on screen at all times. Which one is right
+                depends on whether the athlete is alone, and that changes
+                between angles, not between sessions. */}
+            <Stack gap={spacing.md}>
+              {CAPTURE_SOURCES.map((source, index) => (
+                <Stack key={source.method} gap={spacing.xs}>
+                  <Button
+                    label={activePhoto ? source.retakeLabel : source.label}
+                    variant={index === 0 ? 'primary' : 'secondary'}
+                    onPress={() => void take(source.method)}
+                    loading={busy === source.method}
+                    disabled={busy !== undefined}
+                  />
+                  <Type variant="caption" tone="tertiary" style={{ textAlign: 'center' }}>
+                    {source.hint}
+                  </Type>
+                </Stack>
+              ))}
+
+              {captureError ? (
+                <Type variant="caption" tone="negative">
+                  {captureError}
+                </Type>
+              ) : null}
+
               {isSessionComplete(draft) ? (
                 <Button label="Review all four" variant="ghost" onPress={() => setStep('review')} />
               ) : null}
