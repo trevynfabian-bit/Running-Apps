@@ -22,17 +22,26 @@ import { Alert, View } from 'react-native';
 import { router } from 'expo-router';
 
 import {
+  CIRCUMFERENCE_POINTS,
   COMPOSITION_SIDES,
   COMPOSITION_SIDE_LABELS,
+  canSaveSessionDraft,
   captureProgress,
   capturedSides,
   createSessionDraft,
-  canSaveSessionDraft,
+  isPlausibleCircumference,
   isSessionComplete,
+  measurementFor,
   nextSideToCapture,
   photoForSide,
+  putMeasurement,
   putPhoto,
+  recordedPoints,
+  removeMeasurement,
+  toCentimetres,
+  type CircumferencePointCode,
   type CompositionSide,
+  type MeasurementUnit,
 } from '@running/core';
 
 import {
@@ -41,8 +50,17 @@ import {
   type CaptureMethod,
 } from '../../src/lib/composition-capture';
 import { saveSession, type SavedCompositionSession } from '../../src/lib/composition-store';
+import { UNIT_LABELS } from '../../src/lib/composition-measurement';
 import { spacing } from '../../src/design/tokens';
-import { Button, Card, Screen, SectionHeader, Stack, Type } from '../../src/components/primitives';
+import {
+  Button,
+  Card,
+  Chip,
+  Screen,
+  SectionHeader,
+  Stack,
+  Type,
+} from '../../src/components/primitives';
 import {
   CaptureProgress,
   SessionSetupGuide,
@@ -50,12 +68,13 @@ import {
   ReviewSummary,
   SaveBlockers,
   SidePhotoPreview,
+  MeasurementRow,
   SidePhotoTile,
   describeCapture,
   describeSessionDate,
 } from '../../src/components/composition';
 
-type Step = 'guide' | 'capture' | 'review' | 'saved';
+type Step = 'guide' | 'capture' | 'review' | 'measure' | 'saved';
 
 /** The steps the guidance can be opened from, and returned to. */
 type CaptureStep = Extract<Step, 'capture' | 'review'>;
@@ -89,6 +108,9 @@ export default function CompositionSessionScreen(): React.ReactElement {
   // that just landed, and cleared by every way of leaving that angle.
   const [pendingSide, setPendingSide] = useState<CompositionSide>();
   const [saved, setSaved] = useState<SavedCompositionSession>();
+  // Centimetres by default: it is what a tape sold anywhere reads, and the unit
+  // every stored value is held in regardless.
+  const [unit, setUnit] = useState<MeasurementUnit>('cm');
 
   const progress = captureProgress(draft);
   const taken = capturedSides(draft);
@@ -98,6 +120,7 @@ export default function CompositionSessionScreen(): React.ReactElement {
   /** The first outstanding angle, or undefined once all four are taken. */
   const nextGap = nextSideToCapture(draft);
   const canSave = canSaveSessionDraft(draft);
+  const recorded = recordedPoints(draft);
 
   const openCapture = (side: CompositionSide): void => {
     setActiveSide(side);
@@ -192,6 +215,24 @@ export default function CompositionSessionScreen(): React.ReactElement {
       { text: 'Keep capturing', style: 'cancel' },
       { text: 'Discard', style: 'destructive', onPress: () => router.back() },
     ]);
+  };
+
+  /**
+   * Take a typed reading, or clear the point when the field is emptied.
+   *
+   * An implausible value is dropped rather than stored: the athlete is mid-type
+   * and a half-finished number is not a correction to keep.
+   */
+  const recordMeasurement = (point: CircumferencePointCode, value: number | undefined): void => {
+    if (value === undefined) {
+      setDraft(removeMeasurement(draft, point));
+      return;
+    }
+    const centimetres = toCentimetres(value, unit);
+    if (!isPlausibleCircumference(centimetres)) return;
+    setDraft(
+      putMeasurement(draft, { point, centimetres, enteredUnit: unit, recordedAt: new Date() }),
+    );
   };
 
   const finish = (): void => {
@@ -425,10 +466,15 @@ export default function CompositionSessionScreen(): React.ReactElement {
             <Stack gap={spacing.sm}>
               <SaveBlockers draft={draft} />
 
-              {/* Save stays on screen and greys out, rather than being swapped
-                  for whatever is missing. The athlete is here to save; hiding
-                  the button makes them work out whether they are allowed to. */}
-              <Button label="Save session" onPress={finish} disabled={!canSave} />
+              {/* Stays on screen and greys out, rather than being swapped for
+                  whatever is missing. The athlete is here to finish the session;
+                  hiding the button makes them work out whether they are allowed
+                  to. */}
+              <Button
+                label="Add measurements"
+                onPress={() => setStep('measure')}
+                disabled={!canSave}
+              />
 
               {nextGap ? (
                 <Button
@@ -439,6 +485,72 @@ export default function CompositionSessionScreen(): React.ReactElement {
               ) : null}
 
               <Button label="Discard" variant="ghost" onPress={leave} />
+            </Stack>
+          </Stack>
+        ) : null}
+
+        {step === 'measure' ? (
+          <Stack gap={spacing.lg}>
+            <Stack gap={spacing.xs}>
+              <Type variant="title">Measurements</Type>
+              <Type variant="body" tone="secondary">
+                Optional, and worth doing. The photos show shape; these are the numbers the
+                comparison can actually subtract.
+              </Type>
+            </Stack>
+
+            <Card>
+              <Stack gap={spacing.md}>
+                <Stack direction="row" justify="space-between" align="center">
+                  <Stack gap={2}>
+                    <Type variant="bodyStrong">Units</Type>
+                    <Type variant="caption" tone="tertiary">
+                      Stored the same way whichever you pick.
+                    </Type>
+                  </Stack>
+                  <Stack direction="row" gap={spacing.sm}>
+                    {(['cm', 'in'] as const).map((option) => (
+                      <Chip
+                        key={option}
+                        label={UNIT_LABELS[option]}
+                        tone="accent"
+                        selected={unit === option}
+                        onPress={() => setUnit(option)}
+                      />
+                    ))}
+                  </Stack>
+                </Stack>
+              </Stack>
+            </Card>
+
+            <Stack>
+              <SectionHeader
+                title={
+                  recorded.length === 0
+                    ? 'Points'
+                    : `${recorded.length} of ${CIRCUMFERENCE_POINTS.length} recorded`
+                }
+              />
+              <Stack gap={spacing.sm}>
+                {CIRCUMFERENCE_POINTS.map((point) => (
+                  <MeasurementRow
+                    key={point.code}
+                    point={point}
+                    unit={unit}
+                    measurement={measurementFor(draft, point.code)}
+                    onChange={(value) => recordMeasurement(point.code, value)}
+                  />
+                ))}
+              </Stack>
+            </Stack>
+
+            <Stack gap={spacing.sm}>
+              <Button label="Save session" onPress={finish} disabled={!canSave} />
+              <Button
+                label="Back to the photos"
+                variant="ghost"
+                onPress={() => setStep('review')}
+              />
             </Stack>
           </Stack>
         ) : null}

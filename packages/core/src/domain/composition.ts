@@ -51,10 +51,16 @@ export interface CompositionSessionDraft {
   startedAt: Date;
   /** Always held in `COMPOSITION_SIDES` order, at most one photo per side. */
   photos: readonly CompositionPhotoDraft[];
+  /**
+   * Tape readings taken in the same sitting, in registry order, at most one per
+   * point. Optional: a session of photographs alone is still a session, and
+   * refusing to save one would just mean the athlete takes none.
+   */
+  measurements: readonly BodyMeasurementDraft[];
 }
 
 export function createSessionDraft(startedAt: Date): CompositionSessionDraft {
-  return { startedAt, photos: [] };
+  return { startedAt, photos: [], measurements: [] };
 }
 
 export function photoForSide(
@@ -163,4 +169,110 @@ export function validateSessionDraft(
 
 export function canSaveSessionDraft(draft: CompositionSessionDraft): boolean {
   return validateSessionDraft(draft).length === 0;
+}
+
+// ---------------------------------------------------------------------------
+// Circumference measurements
+// ---------------------------------------------------------------------------
+
+/**
+ * The points a tape measure is put around, in the order they are worked down
+ * the body.
+ *
+ * A fixed registry rather than free text. Two sessions are only comparable if
+ * "waist" meant the same place both times, and a typed-in name means whatever
+ * the athlete was thinking that morning. Neck, waist and hips are load-bearing
+ * beyond display: they are the inputs the circumference-based body fat estimate
+ * needs.
+ *
+ * Codes and labels only. Where to put the tape is instruction, and instruction
+ * belongs to whatever is showing it.
+ */
+export const CIRCUMFERENCE_POINTS = [
+  { code: 'neck', label: 'Neck' },
+  { code: 'chest', label: 'Chest' },
+  { code: 'waist', label: 'Waist' },
+  { code: 'hips', label: 'Hips' },
+  { code: 'left_arm', label: 'Left arm' },
+  { code: 'right_arm', label: 'Right arm' },
+  { code: 'left_thigh', label: 'Left thigh' },
+  { code: 'right_thigh', label: 'Right thigh' },
+] as const;
+
+export type CircumferencePointCode = (typeof CIRCUMFERENCE_POINTS)[number]['code'];
+
+export type MeasurementUnit = 'cm' | 'in';
+
+export const CENTIMETRES_PER_INCH = 2.54;
+
+export function toCentimetres(value: number, unit: MeasurementUnit): number {
+  return unit === 'in' ? value * CENTIMETRES_PER_INCH : value;
+}
+
+export function fromCentimetres(centimetres: number, unit: MeasurementUnit): number {
+  return unit === 'in' ? centimetres / CENTIMETRES_PER_INCH : centimetres;
+}
+
+/**
+ * One tape reading.
+ *
+ * Held in centimetres whatever the athlete typed, with the unit they typed it
+ * in kept alongside. Storing the number as entered would mean every comparison
+ * and every formula has to ask which unit this row is in, and the first place
+ * that forgets produces a trend with a 2.54x step in it. Keeping the entered
+ * unit costs one field and means the value reads back the way it was written.
+ */
+export interface BodyMeasurementDraft {
+  point: CircumferencePointCode;
+  centimetres: number;
+  enteredUnit: MeasurementUnit;
+  recordedAt: Date;
+}
+
+/**
+ * A circumference that could plausibly have come off a person.
+ *
+ * Deliberately wide. This is here to catch a slipped decimal point or a value
+ * typed in the wrong unit, not to have an opinion about anyone's body.
+ */
+export function isPlausibleCircumference(centimetres: number): boolean {
+  return Number.isFinite(centimetres) && centimetres >= 5 && centimetres <= 250;
+}
+
+export function measurementFor(
+  draft: CompositionSessionDraft,
+  point: CircumferencePointCode,
+): BodyMeasurementDraft | undefined {
+  return draft.measurements.find((measurement) => measurement.point === point);
+}
+
+/** Add or correct one point's reading, leaving every other point alone. */
+export function putMeasurement(
+  draft: CompositionSessionDraft,
+  measurement: BodyMeasurementDraft,
+): CompositionSessionDraft {
+  const others = draft.measurements.filter((existing) => existing.point !== measurement.point);
+  return { ...draft, measurements: inPointOrder([...others, measurement]) };
+}
+
+export function removeMeasurement(
+  draft: CompositionSessionDraft,
+  point: CircumferencePointCode,
+): CompositionSessionDraft {
+  return {
+    ...draft,
+    measurements: draft.measurements.filter((measurement) => measurement.point !== point),
+  };
+}
+
+/** Points that have a reading, in registry order. */
+export function recordedPoints(draft: CompositionSessionDraft): readonly CircumferencePointCode[] {
+  return CIRCUMFERENCE_POINTS.map((point) => point.code).filter((code) =>
+    draft.measurements.some((measurement) => measurement.point === code),
+  );
+}
+
+function inPointOrder(measurements: readonly BodyMeasurementDraft[]): BodyMeasurementDraft[] {
+  const order = CIRCUMFERENCE_POINTS.map((point) => point.code);
+  return [...measurements].sort((a, b) => order.indexOf(a.point) - order.indexOf(b.point));
 }

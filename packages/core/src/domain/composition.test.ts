@@ -7,13 +7,23 @@ import {
   isSessionComplete,
   missingSides,
   nextSideToCapture,
+  CIRCUMFERENCE_POINTS,
   canSaveSessionDraft,
+  fromCentimetres,
+  isPlausibleCircumference,
+  measurementFor,
   photoForSide,
   putPhoto,
+  putMeasurement,
+  recordedPoints,
+  removeMeasurement,
   removePhoto,
+  toCentimetres,
   validateSessionDraft,
   type CompositionSessionDraft,
+  type CircumferencePointCode,
   type CompositionSide,
+  type MeasurementUnit,
 } from './composition.js';
 
 const startedAt = new Date('2026-09-17T08:00:00Z');
@@ -236,5 +246,130 @@ describe('replacing one angle leaves the rest alone', () => {
 
     expect(photoForSide(before, 'left')?.uri).toBe('file:///left.jpg');
     expect(before.photos).toHaveLength(4);
+  });
+});
+
+describe('circumference measurements', () => {
+  const recordedAt = new Date('2026-09-17T08:10:00Z');
+
+  function record(
+    draft: CompositionSessionDraft,
+    point: CircumferencePointCode,
+    value: number,
+    unit: MeasurementUnit = 'cm',
+  ): CompositionSessionDraft {
+    return putMeasurement(draft, {
+      point,
+      centimetres: toCentimetres(value, unit),
+      enteredUnit: unit,
+      recordedAt,
+    });
+  }
+
+  it('starts empty and does not block saving a photo-only session', () => {
+    let draft = createSessionDraft(startedAt);
+    for (const side of COMPOSITION_SIDES) draft = capture(draft, side);
+
+    expect(draft.measurements).toEqual([]);
+    expect(canSaveSessionDraft(draft)).toBe(true);
+  });
+
+  it('converts inches to centimetres and reads back in the unit entered', () => {
+    const draft = record(createSessionDraft(startedAt), 'waist', 32, 'in');
+    const waist = measurementFor(draft, 'waist');
+
+    expect(waist?.centimetres).toBeCloseTo(81.28, 6);
+    expect(waist?.enteredUnit).toBe('in');
+    expect(fromCentimetres(waist!.centimetres, 'in')).toBeCloseTo(32, 6);
+  });
+
+  it('round-trips a centimetre value untouched', () => {
+    const draft = record(createSessionDraft(startedAt), 'neck', 38.5);
+
+    expect(measurementFor(draft, 'neck')?.centimetres).toBe(38.5);
+    expect(toCentimetres(38.5, 'cm')).toBe(38.5);
+  });
+
+  it('corrects a point in place rather than recording it twice', () => {
+    let draft = record(createSessionDraft(startedAt), 'waist', 84);
+    draft = record(draft, 'waist', 83.2);
+
+    expect(draft.measurements).toHaveLength(1);
+    expect(measurementFor(draft, 'waist')?.centimetres).toBe(83.2);
+  });
+
+  it('leaves the other points alone when one is corrected', () => {
+    let draft = record(createSessionDraft(startedAt), 'neck', 38);
+    draft = record(draft, 'waist', 84);
+    const neck = measurementFor(draft, 'neck');
+
+    const corrected = record(draft, 'waist', 83);
+
+    expect(measurementFor(corrected, 'neck')).toBe(neck);
+    expect(corrected.measurements).toHaveLength(2);
+  });
+
+  it('holds readings in registry order however they were entered', () => {
+    let draft = createSessionDraft(startedAt);
+    draft = record(draft, 'right_thigh', 58);
+    draft = record(draft, 'neck', 38);
+    draft = record(draft, 'waist', 84);
+
+    expect(draft.measurements.map((m) => m.point)).toEqual(['neck', 'waist', 'right_thigh']);
+    expect(recordedPoints(draft)).toEqual(['neck', 'waist', 'right_thigh']);
+  });
+
+  it('drops one point without disturbing the rest', () => {
+    let draft = record(createSessionDraft(startedAt), 'neck', 38);
+    draft = record(draft, 'waist', 84);
+
+    const reduced = removeMeasurement(draft, 'neck');
+
+    expect(recordedPoints(reduced)).toEqual(['waist']);
+    expect(draft.measurements).toHaveLength(2);
+  });
+
+  it('accepts a human circumference and rejects a slipped decimal or wrong unit', () => {
+    expect(isPlausibleCircumference(84)).toBe(true);
+    expect(isPlausibleCircumference(5)).toBe(true);
+    expect(isPlausibleCircumference(250)).toBe(true);
+
+    expect(isPlausibleCircumference(0)).toBe(false);
+    expect(isPlausibleCircumference(-84)).toBe(false);
+    expect(isPlausibleCircumference(840)).toBe(false);
+    expect(isPlausibleCircumference(Number.NaN)).toBe(false);
+    expect(isPlausibleCircumference(Number.POSITIVE_INFINITY)).toBe(false);
+  });
+
+  it('keeps photos and measurements on the one session', () => {
+    let draft = createSessionDraft(startedAt);
+    for (const side of COMPOSITION_SIDES) draft = capture(draft, side);
+    draft = record(draft, 'waist', 84);
+
+    expect(draft.photos).toHaveLength(4);
+    expect(draft.measurements).toHaveLength(1);
+    expect(isSessionComplete(draft)).toBe(true);
+  });
+});
+
+describe('CIRCUMFERENCE_POINTS', () => {
+  it('has unique codes, since a duplicate would silently merge two points', () => {
+    const codes = CIRCUMFERENCE_POINTS.map((point) => point.code);
+
+    expect(new Set(codes).size).toBe(codes.length);
+  });
+
+  it('carries the three points the body fat estimate needs', () => {
+    const codes = CIRCUMFERENCE_POINTS.map((point) => point.code);
+
+    expect(codes).toContain('neck');
+    expect(codes).toContain('waist');
+    expect(codes).toContain('hips');
+  });
+
+  it('gives every point a label to show', () => {
+    for (const point of CIRCUMFERENCE_POINTS) {
+      expect(point.label.trim()).not.toBe('');
+    }
   });
 });

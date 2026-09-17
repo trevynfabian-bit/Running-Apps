@@ -10,8 +10,8 @@
  * blank. A gap the athlete cannot name is a gap they cannot fill.
  */
 
-import React from 'react';
-import { Image, Modal, Pressable, StyleSheet, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Image, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -19,18 +19,28 @@ import {
   COMPOSITION_SIDE_LABELS,
   captureProgress,
   missingSides,
+  fromCentimetres,
   validateSessionDraft,
   type CompositionSide,
   type CompositionPhotoDraft,
   type CompositionSessionDraft,
+  type BodyMeasurementDraft,
+  type CircumferencePointCode,
+  type MeasurementUnit,
   type SessionDraftProblem,
 } from '@running/core';
 
 import { radius, spacing } from '../design/tokens';
-import { useTheme } from '../design/theme';
+import { typeStyle, useTheme } from '../design/theme';
 import { Button, Card, Stack, Type } from './primitives';
 import { isStubPhotoUri, stubCaptureMethod } from '../lib/composition-capture';
 import { SESSION_SETUP, SIDE_GUIDANCE } from '../lib/composition-guidance';
+import {
+  TAPE_GUIDANCE,
+  UNIT_LABELS,
+  formatMeasurement,
+  parseMeasurementInput,
+} from '../lib/composition-measurement';
 
 /** Portrait. A standing body fits this far better than a square crop. */
 const ASPECT_RATIO = 3 / 4;
@@ -577,4 +587,92 @@ function describeProblem(problem: SessionDraftProblem): string {
       : `Still to take: ${listSides(problem.sides)}.`;
   }
   return `The ${COMPOSITION_SIDE_LABELS[problem.side].toLowerCase()} photo did not come through. Take it again.`;
+}
+
+/**
+ * One tape reading, with the instruction for where to put the tape.
+ *
+ * The guidance sits with the field rather than on a separate screen. Someone
+ * holding a tape around their waist is not going to navigate away to check
+ * whether it goes at the navel, and a reading taken in the wrong place is worse
+ * than no reading: it looks like data.
+ *
+ * The field holds what was typed, not a reformatted version of it. Rewriting
+ * "83." to "83.0" mid-keystroke moves the cursor and loses the decimal the
+ * athlete was about to type.
+ */
+export function MeasurementRow({
+  point,
+  unit,
+  measurement,
+  onChange,
+}: {
+  point: { code: CircumferencePointCode; label: string };
+  unit: MeasurementUnit;
+  measurement?: BodyMeasurementDraft;
+  onChange: (value: number | undefined) => void;
+}): React.ReactElement {
+  const theme = useTheme();
+  const stored = measurement
+    ? formatMeasurement(fromCentimetres(measurement.centimetres, unit))
+    : '';
+  const [text, setText] = useState(stored);
+  const shownUnit = useRef(unit);
+
+  // Re-sync on a unit switch and on nothing else. Following the stored value
+  // instead would rewrite the field on every keystroke -- typing "83" stores
+  // 83, which formats back as "83.0", which lands in the field and takes the
+  // cursor with it, exactly as the athlete reaches for the decimal point.
+  useEffect(() => {
+    if (shownUnit.current === unit) return;
+    shownUnit.current = unit;
+    setText(stored);
+  }, [unit, stored]);
+
+  const commit = (raw: string): void => {
+    setText(raw);
+    onChange(parseMeasurementInput(raw));
+  };
+
+  return (
+    <Card>
+      <Stack gap={spacing.sm}>
+        <Stack direction="row" justify="space-between" align="center" gap={spacing.md}>
+          <Type variant="bodyStrong" style={{ flex: 1 }}>
+            {point.label}
+          </Type>
+
+          <Stack direction="row" align="center" gap={spacing.sm}>
+            <TextInput
+              value={text}
+              onChangeText={commit}
+              placeholder="—"
+              placeholderTextColor={theme.color.textTertiary}
+              keyboardType="decimal-pad"
+              accessibilityLabel={`${point.label} in ${unit === 'cm' ? 'centimetres' : 'inches'}`}
+              style={{
+                minWidth: 88,
+                minHeight: 44,
+                paddingHorizontal: spacing.md,
+                borderRadius: radius.md,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: theme.color.border,
+                backgroundColor: theme.color.surfaceRaised,
+                color: theme.color.text,
+                textAlign: 'right',
+                ...typeStyle('metricSmall'),
+              }}
+            />
+            <Type variant="caption" tone="tertiary">
+              {UNIT_LABELS[unit]}
+            </Type>
+          </Stack>
+        </Stack>
+
+        <Type variant="caption" tone="secondary">
+          {TAPE_GUIDANCE[point.code]}
+        </Type>
+      </Stack>
+    </Card>
+  );
 }
