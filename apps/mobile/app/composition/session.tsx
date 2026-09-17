@@ -316,6 +316,16 @@ export default function CompositionSessionScreen(): React.ReactElement {
                  depends on whether the athlete is alone, and that changes
                  between angles, not between sessions. */
               <Stack gap={spacing.md}>
+                {activePhoto ? (
+                  // Said before the shot, not after it. Someone who arrived here
+                  // from "Replace" is about to overwrite something, and the
+                  // reassurance is worth nothing once the shot is already taken.
+                  <Type variant="caption" tone="secondary">
+                    This replaces the {COMPOSITION_SIDE_LABELS[activeSide].toLowerCase()} photo
+                    taken at {describeCapture(activePhoto)}. The other angles are untouched.
+                  </Type>
+                ) : null}
+
                 {CAPTURE_SOURCES.map((source, index) => (
                   <Stack key={source.method} gap={spacing.xs}>
                     <Button

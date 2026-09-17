@@ -180,3 +180,61 @@ describe('validateSessionDraft', () => {
     ]);
   });
 });
+
+describe('replacing one angle leaves the rest alone', () => {
+  function fullDraft(): CompositionSessionDraft {
+    let draft = createSessionDraft(startedAt);
+    for (const side of COMPOSITION_SIDES) draft = capture(draft, side);
+    return draft;
+  }
+
+  it('keeps the other three as the very same objects, not rebuilt copies', () => {
+    const before = fullDraft();
+    const untouched = (['front', 'back', 'right'] as const).map((side) =>
+      photoForSide(before, side),
+    );
+
+    const after = capture(before, 'left', 'file:///left-again.jpg');
+
+    // Identity, not equality: a rebuild that happened to produce equal values
+    // would still mean the replacement had reached angles it has no business
+    // touching.
+    for (const [index, side] of (['front', 'back', 'right'] as const).entries()) {
+      expect(photoForSide(after, side)).toBe(untouched[index]);
+    }
+  });
+
+  it('never grows the set, however many times one angle is redone', () => {
+    let draft = fullDraft();
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      draft = capture(draft, 'back', `file:///back-${attempt}.jpg`);
+    }
+
+    expect(draft.photos).toHaveLength(4);
+    expect(photoForSide(draft, 'back')?.uri).toBe('file:///back-4.jpg');
+    expect(capturedSides(draft)).toEqual(['front', 'back', 'left', 'right']);
+  });
+
+  it('holds capture order and the session start through a replacement', () => {
+    const after = capture(fullDraft(), 'front', 'file:///front-again.jpg');
+
+    expect(after.photos.map((photo) => photo.side)).toEqual(['front', 'back', 'left', 'right']);
+    expect(after.startedAt).toBe(startedAt);
+  });
+
+  it('leaves a complete session complete and still saveable', () => {
+    const after = capture(fullDraft(), 'right', 'file:///right-again.jpg');
+
+    expect(isSessionComplete(after)).toBe(true);
+    expect(canSaveSessionDraft(after)).toBe(true);
+    expect(missingSides(after)).toEqual([]);
+  });
+
+  it('does not touch the draft it replaced from', () => {
+    const before = fullDraft();
+    capture(before, 'left', 'file:///left-again.jpg');
+
+    expect(photoForSide(before, 'left')?.uri).toBe('file:///left.jpg');
+    expect(before.photos).toHaveLength(4);
+  });
+});
