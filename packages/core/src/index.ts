@@ -10,6 +10,7 @@
 // --- Domain ---------------------------------------------------------------
 export * from './domain/athlete.js';
 export * from './domain/coaching.js';
+export * from './domain/composition.js';
 export * from './domain/provenance.js';
 export * from './domain/race.js';
 export * from './domain/recovery.js';

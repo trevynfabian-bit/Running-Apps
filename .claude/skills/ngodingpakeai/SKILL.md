@@ -46,6 +46,24 @@ code for them already exists.
 This means a user with an existing project does NOT have to write a PRD by hand.
 They connect, sync once, and the workspace is populated.
 
+## Project started from a template (`ngodingpakeai create`)
+When the user began from a template in the web app, the copied prompt ran
+`npx ngodingpakeai create --token …`. That command already downloaded the
+source, made the first git commit, wrote `.ngodingpakeai/config.json`, and
+installed this skill. In that case:
+- **Skip `connect`.** The workspace, plan, and repo exist on the server and are
+  bound by the config file. Never create another workspace for this folder.
+- **Run the project's own setup first.** Templates ship their setup instructions
+  (`AGENTS.md` "first prompt" section and/or `.agents/skills/*/SKILL.md`, e.g.
+  `starter-setup`). Follow them to install dependencies, prepare the local
+  database, and start the dev server — before working any task. Explain each
+  step in plain language; the user may never have run a project before.
+- The forked plan already describes what the template contains (fitur marked
+  `done`). New work comes from the plan's planned fitur via `task next`.
+- Commit after each completed task so the user always has a known-good state
+  to return to. If something breaks, run `npm run doctor` (or the template's
+  equivalent) and the dev-server logs before changing code.
+
 ## Reverse state transitions
 The server owns the reverse state. Advance it by completing the CLI sync flow;
 never edit the database, call the HTTP API directly, or invent a separate state
@@ -133,7 +151,6 @@ Rules for good summaries:
 | `npx ngodingpakeai index` | Local scan preview only (no upload). |
 | `npx ngodingpakeai plan get <planId>` | Print a plan's PRD (project context) before working its tasks. |
 | `npx ngodingpakeai task next --plan <planId>` | Serve the SINGLE next task to work (full prompt inline), page-ordered & frontend-first. The main loop; `--json` to script. |
-| `npx ngodingpakeai task list` | List the current SLICE — one phase × one layer (frontend-first) when scoped to a plan; `--json` to script. |
 | `npx ngodingpakeai task get <ref>` | Fetch a task's title + plan/feature context (no per-task prompt or description; combine with the PRD + your code reading). |
 | `npx ngodingpakeai task start <ref>` | Mark a task in-progress (status: doing). |
 | `npx ngodingpakeai task complete <ref>` | Mark a task done. |
@@ -142,7 +159,7 @@ Rules for good summaries:
 | `npx ngodingpakeai disconnect` | Unlink the repo. |
 
 > `<ref>` is a task reference: either the readable path `<plan>/<feature>/<task>`
-> (e.g. `tokoku/autentikasi/buat-form-login`, as shown by `task list`) or the
+> (e.g. `tokoku/autentikasi/buat-form-login`, as shown by `task next`) or the
 > task's UUID. Both resolve to the same task — prefer the readable path.
 
 ## What the workspace can do after sync
@@ -205,6 +222,8 @@ on the user's behalf or add `--yes` unless the user has explicitly confirmed the
 completed-task reset.
 
 ### Working through tasks — ONE task at a time via `task next` (the main loop)
+Never use `task list`; it is retired and does not return tasks. If the plan ID
+is missing, ask the user for the target plan before fetching any tasks.
 Do NOT pull the whole backlog and grind through it in one context — that's what makes
 output degrade. Instead let the server hand you ONE task at a time and give each its own
 clean focus. The backlog is ordered into **phases** (build order) and, within each phase,

@@ -10,6 +10,7 @@
 
 import React, { useState } from 'react';
 import { RefreshControl, View } from 'react-native';
+import { router } from 'expo-router';
 
 import { formatDuration, formatPace } from '@running/core';
 
@@ -263,6 +264,23 @@ export default function ProgressScreen(): React.ReactElement {
             </Card>
           </View>
         ) : null}
+
+        {/* Body composition */}
+        <View>
+          <SectionHeader title="Body composition" />
+          <Card
+            onPress={() => router.push('/composition/session')}
+            accessibilityLabel="Start a body composition session"
+          >
+            <Stack gap={spacing.xs}>
+              <Type variant="bodyStrong">Photograph four angles</Type>
+              <Type variant="caption" tone="secondary">
+                Front, back and both sides, taken the same way each time so they can be compared
+                later.
+              </Type>
+            </Stack>
+          </Card>
+        </View>
 
         {/* Race predictions */}
         {data.racePredictions.length > 0 ? (
