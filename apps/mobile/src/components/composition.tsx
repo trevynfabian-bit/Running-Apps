@@ -448,7 +448,8 @@ const MONTHS = [
   'December',
 ] as const;
 
-function formatSessionDate(at: Date): string {
+/** "17 September 2026". Used by the review summary and the history list. */
+export function describeSessionDate(at: Date): string {
   return `${at.getDate()} ${MONTHS[at.getMonth()] ?? ''} ${at.getFullYear()}`;
 }
 
@@ -484,7 +485,7 @@ export function ReviewSummary({ draft }: { draft: CompositionSessionDraft }): Re
     <Card>
       <Stack gap={spacing.sm}>
         <Type variant="overline" tone="tertiary">
-          SESSION · {formatSessionDate(draft.startedAt).toUpperCase()}
+          SESSION · {describeSessionDate(draft.startedAt).toUpperCase()}
         </Type>
 
         <Type variant="bodyStrong" tone={complete ? 'default' : 'caution'}>

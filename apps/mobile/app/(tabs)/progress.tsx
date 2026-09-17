@@ -269,8 +269,8 @@ export default function ProgressScreen(): React.ReactElement {
         <View>
           <SectionHeader title="Body composition" />
           <Card
-            onPress={() => router.push('/composition/session')}
-            accessibilityLabel="Start a body composition session"
+            onPress={() => router.push('/composition')}
+            accessibilityLabel="Open body composition"
           >
             <Stack gap={spacing.xs}>
               <Type variant="bodyStrong">Photograph four angles</Type>

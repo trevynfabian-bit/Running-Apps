@@ -40,6 +40,7 @@ import {
   capturePhoto,
   type CaptureMethod,
 } from '../../src/lib/composition-capture';
+import { saveSession, type SavedCompositionSession } from '../../src/lib/composition-store';
 import { spacing } from '../../src/design/tokens';
 import { Button, Card, Screen, SectionHeader, Stack, Type } from '../../src/components/primitives';
 import {
@@ -51,12 +52,13 @@ import {
   SidePhotoPreview,
   SidePhotoTile,
   describeCapture,
+  describeSessionDate,
 } from '../../src/components/composition';
 
-type Step = 'guide' | 'capture' | 'review';
+type Step = 'guide' | 'capture' | 'review' | 'saved';
 
 /** The steps the guidance can be opened from, and returned to. */
-type CaptureStep = Exclude<Step, 'guide'>;
+type CaptureStep = Extract<Step, 'capture' | 'review'>;
 
 /**
  * The review grid, two by two.
@@ -86,6 +88,7 @@ export default function CompositionSessionScreen(): React.ReactElement {
   // The angle whose shot is waiting to be kept or redone. Set only by a capture
   // that just landed, and cleared by every way of leaving that angle.
   const [pendingSide, setPendingSide] = useState<CompositionSide>();
+  const [saved, setSaved] = useState<SavedCompositionSession>();
 
   const progress = captureProgress(draft);
   const taken = capturedSides(draft);
@@ -192,14 +195,19 @@ export default function CompositionSessionScreen(): React.ReactElement {
   };
 
   const finish = (): void => {
-    // Honest about where this stops. Saving needs the composition endpoint, and
-    // measurements are the next screen in the session once it exists.
-    Alert.alert(
-      'All four angles captured',
-      'Saving the session and recording your measurements arrive with the composition API.',
-      [{ text: 'Done', onPress: () => router.back() }],
-    );
+    // Goes to the in-memory stub store, so the session lasts as long as the app
+    // process. The confirmation below says so rather than implying otherwise.
+    setSaved(saveSession(draft));
+    setStep('saved');
   };
+
+  /**
+   * Leave for the history, replacing this screen rather than stacking on it.
+   *
+   * Backing out of the history must not land the athlete in a finished capture
+   * flow holding a session they have already saved.
+   */
+  const goToHistory = (): void => router.replace('/composition');
 
   return (
     <Screen>
@@ -414,6 +422,48 @@ export default function CompositionSessionScreen(): React.ReactElement {
               ) : null}
 
               <Button label="Discard" variant="ghost" onPress={leave} />
+            </Stack>
+          </Stack>
+        ) : null}
+
+        {step === 'saved' && saved ? (
+          <Stack gap={spacing.lg}>
+            <Stack gap={spacing.xs}>
+              <Type variant="title">Session saved</Type>
+              <Type variant="body" tone="secondary">
+                {saved.photos.length} angles from {describeSessionDate(saved.capturedAt)}. It sits
+                in your history now, ready to be compared against the next one.
+              </Type>
+            </Stack>
+
+            <Stack gap={spacing.sm}>
+              {REVIEW_ROWS.map((row) => (
+                <Stack key={row.join('-')} direction="row" gap={spacing.sm}>
+                  {row.map((side) => {
+                    const photo = saved.photos.find((item) => item.side === side);
+                    return (
+                      <SidePhotoTile
+                        key={side}
+                        side={side}
+                        photo={photo}
+                        caption={photo ? describeCapture(photo) : undefined}
+                      />
+                    );
+                  })}
+                </Stack>
+              ))}
+            </Stack>
+
+            <Card>
+              <Type variant="caption" tone="tertiary">
+                Saved on this device only. Sessions move to your account, and measurements join
+                them, when the composition API lands.
+              </Type>
+            </Card>
+
+            <Stack gap={spacing.sm}>
+              <Button label="See your history" onPress={goToHistory} />
+              <Button label="Done" variant="ghost" onPress={() => router.back()} />
             </Stack>
           </Stack>
         ) : null}
