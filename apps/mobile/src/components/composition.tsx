@@ -40,11 +40,19 @@ export function SidePhotoTile({
   photo,
   onPress,
   caption,
+  action,
 }: {
   side: CompositionSide;
   photo?: CompositionPhotoDraft;
   onPress?: () => void;
   caption?: string;
+  /**
+   * An action for this angle alone, shown under the caption.
+   *
+   * A nested pressable, which React Native resolves to the inner one, so the
+   * action fires without also triggering whatever tapping the tile does.
+   */
+  action?: { label: string; onPress: () => void };
 }): React.ReactElement {
   const theme = useTheme();
   const label = COMPOSITION_SIDE_LABELS[side];
@@ -87,6 +95,24 @@ export function SidePhotoTile({
             </Type>
           ) : null}
         </Stack>
+
+        {action ? (
+          <Pressable
+            onPress={action.onPress}
+            accessibilityRole="button"
+            accessibilityLabel={`${action.label} the ${label.toLowerCase()} photo`}
+            hitSlop={8}
+            style={({ pressed }) => ({
+              minHeight: 32,
+              justifyContent: 'center',
+              opacity: pressed ? 0.6 : 1,
+            })}
+          >
+            <Type variant="caption" tone="accent">
+              {action.label}
+            </Type>
+          </Pressable>
+        ) : null}
       </Stack>
     </Card>
   );

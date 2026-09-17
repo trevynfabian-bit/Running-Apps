@@ -397,7 +397,14 @@ export default function CompositionSessionScreen(): React.ReactElement {
                         side={side}
                         photo={photo}
                         caption={photo ? describeCapture(photo) : 'Not taken yet'}
+                        // Tapping the photo inspects it; the action reshoots it.
+                        // Replacing one angle from here is the common repair, and
+                        // routing it through the preview first made it two taps.
                         onPress={() => setPreviewSide(side)}
+                        action={{
+                          label: photo ? 'Replace' : 'Take',
+                          onPress: () => openCapture(side),
+                        }}
                       />
                     );
                   })}
