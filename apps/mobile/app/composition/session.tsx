@@ -45,13 +45,26 @@ import {
   CaptureProgress,
   SessionSetupGuide,
   SideGuidanceCard,
+  SidePhotoPreview,
   SidePhotoTile,
+  describeCapture,
 } from '../../src/components/composition';
 
 type Step = 'guide' | 'capture' | 'review';
 
 /** The steps the guidance can be opened from, and returned to. */
 type CaptureStep = Exclude<Step, 'guide'>;
+
+/**
+ * The review grid, two by two.
+ *
+ * Front against back and left against right: those are the pairs the eye
+ * compares, so each pair shares a row.
+ */
+const REVIEW_ROWS: readonly (readonly CompositionSide[])[] = [
+  ['front', 'back'],
+  ['left', 'right'],
+];
 
 export default function CompositionSessionScreen(): React.ReactElement {
   const [step, setStep] = useState<Step>('guide');
@@ -64,6 +77,9 @@ export default function CompositionSessionScreen(): React.ReactElement {
   // Cleared by the next attempt, so a refused permission does not sit under a
   // shot that has since succeeded.
   const [captureError, setCaptureError] = useState<string>();
+  // The angle being looked at full size, if any. Separate from `activeSide`:
+  // inspecting an angle is not the same as deciding to reshoot it.
+  const [previewSide, setPreviewSide] = useState<CompositionSide>();
 
   const progress = captureProgress(draft);
   const taken = capturedSides(draft);
@@ -90,6 +106,19 @@ export default function CompositionSessionScreen(): React.ReactElement {
   const closeGuide = (): void => {
     setStep(guideReturn ?? 'capture');
     setGuideReturn(undefined);
+  };
+
+  const stepPreview = (delta: -1 | 1): void => {
+    if (!previewSide) return;
+    const next = COMPOSITION_SIDES[COMPOSITION_SIDES.indexOf(previewSide) + delta];
+    if (next) setPreviewSide(next);
+  };
+
+  const retakeFromPreview = (): void => {
+    if (!previewSide) return;
+    const side = previewSide;
+    setPreviewSide(undefined);
+    openCapture(side);
   };
 
   const take = async (method: CaptureMethod): Promise<void> => {
@@ -263,14 +292,18 @@ export default function CompositionSessionScreen(): React.ReactElement {
             <Stack>
               <SectionHeader title="This session" />
               <Stack direction="row" gap={spacing.sm}>
-                {COMPOSITION_SIDES.map((side) => (
-                  <SidePhotoTile
-                    key={side}
-                    side={side}
-                    photo={photoForSide(draft, side)}
-                    onPress={() => setActiveSide(side)}
-                  />
-                ))}
+                {COMPOSITION_SIDES.map((side) => {
+                  const photo = photoForSide(draft, side);
+                  return (
+                    <SidePhotoTile
+                      key={side}
+                      side={side}
+                      photo={photo}
+                      caption={photo ? describeCapture(photo) : undefined}
+                      onPress={() => setActiveSide(side)}
+                    />
+                  );
+                })}
               </Stack>
             </Stack>
           </Stack>
@@ -281,7 +314,8 @@ export default function CompositionSessionScreen(): React.ReactElement {
             <Stack gap={spacing.xs}>
               <Type variant="title">Check them before you save</Type>
               <Type variant="body" tone="secondary">
-                Tap any angle to retake it. The other three are kept.
+                Tap an angle to see it full size. At this size a soft or badly framed shot still
+                looks fine.
               </Type>
             </Stack>
 
@@ -297,33 +331,23 @@ export default function CompositionSessionScreen(): React.ReactElement {
               action={{ label: 'Full guide', onPress: () => openGuide('review') }}
             />
 
-            {/* Two by two: the pairs that get compared are front/back and
-                left/right, and this puts each pair on one row. */}
             <Stack gap={spacing.sm}>
-              <Stack direction="row" gap={spacing.sm}>
-                <SidePhotoTile
-                  side="front"
-                  photo={photoForSide(draft, 'front')}
-                  onPress={() => openCapture('front')}
-                />
-                <SidePhotoTile
-                  side="back"
-                  photo={photoForSide(draft, 'back')}
-                  onPress={() => openCapture('back')}
-                />
-              </Stack>
-              <Stack direction="row" gap={spacing.sm}>
-                <SidePhotoTile
-                  side="left"
-                  photo={photoForSide(draft, 'left')}
-                  onPress={() => openCapture('left')}
-                />
-                <SidePhotoTile
-                  side="right"
-                  photo={photoForSide(draft, 'right')}
-                  onPress={() => openCapture('right')}
-                />
-              </Stack>
+              {REVIEW_ROWS.map((row) => (
+                <Stack key={row.join('-')} direction="row" gap={spacing.sm}>
+                  {row.map((side) => {
+                    const photo = photoForSide(draft, side);
+                    return (
+                      <SidePhotoTile
+                        key={side}
+                        side={side}
+                        photo={photo}
+                        caption={photo ? describeCapture(photo) : 'Not taken yet'}
+                        onPress={() => setPreviewSide(side)}
+                      />
+                    );
+                  })}
+                </Stack>
+              ))}
             </Stack>
 
             <Stack gap={spacing.sm}>
@@ -340,6 +364,17 @@ export default function CompositionSessionScreen(): React.ReactElement {
           </Stack>
         ) : null}
       </Stack>
+
+      {previewSide ? (
+        <SidePhotoPreview
+          visible
+          side={previewSide}
+          photo={photoForSide(draft, previewSide)}
+          onClose={() => setPreviewSide(undefined)}
+          onRetake={retakeFromPreview}
+          onStep={stepPreview}
+        />
+      ) : null}
     </Screen>
   );
 }

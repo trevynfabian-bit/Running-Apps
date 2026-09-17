@@ -11,9 +11,11 @@
  */
 
 import React from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { Image, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
+  COMPOSITION_SIDES,
   COMPOSITION_SIDE_LABELS,
   type CompositionSide,
   type CompositionPhotoDraft,
@@ -21,7 +23,7 @@ import {
 
 import { radius, spacing } from '../design/tokens';
 import { useTheme } from '../design/theme';
-import { Card, Stack, Type } from './primitives';
+import { Button, Card, Stack, Type } from './primitives';
 import { isStubPhotoUri, stubCaptureMethod } from '../lib/composition-capture';
 import { SESSION_SETUP, SIDE_GUIDANCE } from '../lib/composition-guidance';
 
@@ -59,9 +61,10 @@ export function SidePhotoTile({
   return (
     <Card
       onPress={onPress}
-      accessibilityLabel={
-        photo ? `${label}, photographed. Tap to retake.` : `${label}, not photographed yet`
-      }
+      // Deliberately states only what is there. The tile opens a preview on the
+      // review and switches angle during capture, so naming an action here
+      // would be wrong in one of the two places.
+      accessibilityLabel={photo ? `${label}, photographed` : `${label}, not photographed yet`}
       style={{ padding: spacing.sm, flex: 1 }}
     >
       <Stack gap={spacing.sm}>
@@ -255,5 +258,172 @@ export function SideGuidanceCard({
         </Stack>
       </Stack>
     </Card>
+  );
+}
+
+/**
+ * When and how an angle was taken, for the tile caption and the preview.
+ *
+ * Time of day rather than a date: within a session all four are minutes apart,
+ * and a gap between them is the useful signal — it usually means one angle was
+ * redone later, under different light.
+ */
+export function describeCapture(photo: CompositionPhotoDraft): string {
+  const method = stubCaptureMethod(photo.uri);
+  const time = formatTimeOfDay(photo.capturedAt);
+  return method ? `${time} · ${method}` : time;
+}
+
+function formatTimeOfDay(at: Date): string {
+  const hours = String(at.getHours()).padStart(2, '0');
+  const minutes = String(at.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
+/**
+ * One angle at full size.
+ *
+ * The review grid is for spotting which angle is wrong; this is for deciding
+ * whether it actually is. At thumbnail size a soft or badly framed shot looks
+ * fine, and the athlete finds out weeks later when the comparison is useless.
+ *
+ * Stepping between angles is left and right through all four, not just the
+ * taken ones: arriving at an empty angle and being offered the camera is a
+ * reasonable way to finish a session.
+ */
+export function SidePhotoPreview({
+  side,
+  photo,
+  visible,
+  onClose,
+  onRetake,
+  onStep,
+}: {
+  side: CompositionSide;
+  photo?: CompositionPhotoDraft;
+  visible: boolean;
+  onClose: () => void;
+  onRetake: () => void;
+  onStep: (delta: -1 | 1) => void;
+}): React.ReactElement {
+  const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  const index = COMPOSITION_SIDES.indexOf(side);
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="fade"
+      transparent
+      onRequestClose={onClose}
+      accessibilityViewIsModal
+    >
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: theme.color.background,
+          paddingTop: insets.top + spacing.lg,
+          paddingBottom: insets.bottom + spacing.lg,
+          paddingHorizontal: spacing.lg,
+          gap: spacing.lg,
+        }}
+      >
+        <Stack direction="row" justify="space-between" align="center">
+          <Stack gap={2}>
+            <Type variant="heading">{COMPOSITION_SIDE_LABELS[side]}</Type>
+            <Type variant="caption" tone="tertiary">
+              {photo ? describeCapture(photo) : 'Not taken yet'}
+            </Type>
+          </Stack>
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close preview"
+            hitSlop={12}
+            style={{
+              minHeight: 44,
+              minWidth: 44,
+              alignItems: 'flex-end',
+              justifyContent: 'center',
+            }}
+          >
+            <Type variant="bodyStrong" tone="accent">
+              Close
+            </Type>
+          </Pressable>
+        </Stack>
+
+        <View
+          style={{
+            flex: 1,
+            borderRadius: radius.lg,
+            overflow: 'hidden',
+            backgroundColor: theme.color.surface,
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: theme.color.border,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {photo ? (
+            <PhotoFill photo={photo} label={COMPOSITION_SIDE_LABELS[side]} />
+          ) : (
+            <Type variant="body" tone="tertiary">
+              Nothing here yet
+            </Type>
+          )}
+        </View>
+
+        <Stack direction="row" justify="space-between" align="center">
+          <PreviewStep
+            label="Previous"
+            glyph="‹"
+            disabled={index <= 0}
+            onPress={() => onStep(-1)}
+          />
+          <Type variant="caption" tone="tertiary">
+            {index + 1} of {COMPOSITION_SIDES.length}
+          </Type>
+          <PreviewStep
+            label="Next"
+            glyph="›"
+            disabled={index >= COMPOSITION_SIDES.length - 1}
+            onPress={() => onStep(1)}
+          />
+        </Stack>
+
+        <Button label={photo ? 'Retake this angle' : 'Take this angle'} onPress={onRetake} />
+      </View>
+    </Modal>
+  );
+}
+
+function PreviewStep({
+  label,
+  glyph,
+  disabled,
+  onPress,
+}: {
+  label: string;
+  glyph: string;
+  disabled: boolean;
+  onPress: () => void;
+}): React.ReactElement {
+  const theme = useTheme();
+
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled }}
+      hitSlop={12}
+      style={{ minHeight: 44, minWidth: 44, alignItems: 'center', justifyContent: 'center' }}
+    >
+      <Type variant="title" style={{ color: disabled ? theme.color.border : theme.color.accent }}>
+        {glyph}
+      </Type>
+    </Pressable>
   );
 }
