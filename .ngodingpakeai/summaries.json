@@ -1001,7 +1001,27 @@
     "summary": "Komputasi zona latihan yang tidak pernah mencampur metodologi. Zone dan ZoneSet (methodology, kind heart_rate atau pace, basis, note). ZONE_DEFINITIONS lima zona dengan batas untuk max_hr_percent, hr_reserve (Karvonen), dan threshold_hr; computeHeartRateZones melempar bila anchor yang dibutuhkan tidak ada dan membuat zona teratas terbuka ke atas. selectHeartRateMethodology memilih metodologi yang datanya tersedia dengan urutan fallback threshold, reserve, max. computePaceZones dari threshold pace lewat PACE_ZONE_DEFINITIONS. zoneForHeartRate, zoneForPace, dan zoneDistribution (fraksi waktu per zona dari stream sampel)."
   },
   "packages/core/src/units/index.ts": {
-    "summary": "Konversi dan format unit dengan unit internal kanonis (meter, detik, detik per km, meter per detik, kilogram): kmToMeters, metersToKm, milesToMeters, metersToMiles, speedToPace, paceToSpeed, computePace, paceKmToMile, formatDuration (M:SS atau H:MM:SS dengan clamp negatif), formatPace per km atau per mil, formatPaceRange, formatDistance, parseDuration, formatSignedDuration. Imperial hanya urusan presentasi."
+    "summary": "Konversi dan pemformatan satuan untuk @running/core dengan satuan kanonis internal: meter, detik, detik per kilometer, meter per detik, dan kilogram. Berisi helper jarak dan pace (kmToMeters, metersToMiles, speedToPace, computePace), pemformatan (formatDuration, formatPace, formatDistance, formatSignedDuration), parser parseDuration, serta blok lingkar tubuh dengan tipe LengthUnit (cm/in), CM_PER_INCH, convertLength, toCanonicalLength, fromCanonicalLength, formatLength, formatCanonicalLength, dan parseLength.",
+    "sections": [
+      {
+        "symbol": "distance and pace helpers",
+        "startLine": 20,
+        "endLine": 60,
+        "summary": "Konversi jarak meter/kilometer/mil dan konversi dua arah antara pace detik per kilometer dengan kecepatan meter per detik; mengembalikan undefined untuk nilai non-positif."
+      },
+      {
+        "symbol": "formatting and parsing",
+        "startLine": 62,
+        "endLine": 137,
+        "summary": "Pemformatan durasi, pace, rentang pace, dan jarak untuk tampilan atlet, plus parseDuration yang menolak input tak valid alih-alih menebak."
+      },
+      {
+        "symbol": "body circumference length",
+        "startLine": 139,
+        "endLine": 215,
+        "summary": "Blok lingkar tubuh: LengthUnit cm/in dengan sentimeter sebagai unit penyimpanan kanonis, convertLength dan pasangan toCanonicalLength/fromCanonicalLength, formatLength satu desimal, serta parseLength yang menerima pemisah koma dan menolak nol, negatif, dan input bersatuan."
+      }
+    ]
   },
   "packages/core/src/util/stats.ts": {
     "summary": "Helper statistik yang total (input kosong mengembalikan undefined, bukan melempar): mean, sum, stdDev populasi, median, ewma dengan alpha 2 dibagi N plus 1, linearRegression (slope, intercept, r2), clamp, lerp, scaleClamped untuk memetakan sinyal mentah ke sub-skor 0 sampai 100, percentChange, round, coefficientOfVariation, dan compact."
@@ -1034,9 +1054,67 @@
     "summary": "Test computeHeartRateZones (lima zona kontigu naik, batas berbeda antara persen max dan HR reserve, Karvonen memperhitungkan resting HR, menolak tanpa resting HR dan input tidak masuk akal, mencatat anchor), selectHeartRateMethodology (hormati preferensi, fallback, threshold diutamakan), zoneForHeartRate (penempatan, di atas max ke zona teratas, di bawah zona 1 undefined, melempar untuk pace set), computePaceZones (urutan lambat ke cepat, threshold di zona threshold, pace sangat cepat ke zona teratas, tolak non-positif), zoneDistribution (jumlah satu, nol tanpa HR, stream kosong)."
   },
   "packages/core/src/units/index.test.ts": {
-    "summary": "Test unit: round-trip pace dan speed, computePace, tolak pembagian nol; formatDuration (M:SS, H:MM:SS, force hours, clamp negatif); formatPace metric dan imperial serta dash untuk nol; formatDistance (meter, desimal, mil); parseDuration (M:SS dan H:MM:SS, tolak input rusak, toleransi whitespace)."
+    "summary": "Uji Vitest untuk modul satuan @running/core. Mencakup round-trip pace dan kecepatan, perhitungan pace dari jarak dan durasi, pemformatan durasi/pace/jarak, parseDuration menolak input malformed, serta blok lingkar tubuh: round-trip cm dan inci, konversi memakai definisi inci eksak, penyimpanan kanonis dalam sentimeter, pemformatan satu desimal, dan parseLength menolak nilai yang bukan lingkar terukur."
   },
   "packages/core/src/util/time.test.ts": {
     "summary": "Test waktu: toLocalDate (hari lokal bukan UTC, lintas date line, timezone di belakang UTC), addDaysToLocalDate (tambah dan kurang, lintas bulan dan tahun, leap day, tanpa drift DST), daysBetweenLocalDates termasuk lintas DST, startOfWeek (Senin, Minggu sebagai akhir minggu, idempoten), isoWeekKey (sortable, sama untuk satu minggu, beda antar minggu), localDateRange, localDayOfWeek, overlapSeconds."
+  },
+  "apps/mobile/src/lib/measurement-units.tsx": {
+    "summary": "Menyimpan satuan ukur bawaan atlet (cm/inci) untuk modul Komposisi Tubuh di apps/mobile. Mengekspor MeasurementUnitProvider, hook useMeasurementUnit, serta loadDefaultUnit/saveDefaultUnit/clearDefaultUnit yang membaca dan menulis preferensi ke AsyncStorage per perangkat. Nilai bawaan jatuh ke cm bila penyimpanan gagal atau berisi satuan yang tidak dikenal, dan kegagalan tulis tidak pernah membatalkan pencatatan yang sedang berjalan.",
+    "sections": [
+      {
+        "symbol": "loadDefaultUnit",
+        "startLine": 44,
+        "endLine": 55,
+        "summary": "Membaca satuan bawaan dari AsyncStorage; mengembalikan FALLBACK_UNIT (cm) bila nilainya bukan cm/in atau penyimpanan melempar error."
+      },
+      {
+        "symbol": "saveDefaultUnit",
+        "startLine": 57,
+        "endLine": 65,
+        "summary": "Menulis satuan bawaan ke AsyncStorage dan menelan error tulis agar entri yang sedang dicatat atlet tidak ikut gagal."
+      },
+      {
+        "symbol": "clearDefaultUnit",
+        "startLine": 67,
+        "endLine": 75,
+        "summary": "Menghapus preferensi satuan; dipanggil saat sign-out bersama pembersihan cache data."
+      },
+      {
+        "symbol": "MeasurementUnitProvider",
+        "startLine": 88,
+        "endLine": 125,
+        "summary": "Context provider yang memuat preferensi sekali saat mount, menahan flag ready sampai terbaca, dan mengekspos setDefaultUnit yang memperbarui state lebih dulu lalu menyimpan."
+      }
+    ]
+  },
+  "apps/mobile/src/lib/body-composition.ts": {
+    "summary": "Tipe klien dan data tiruan untuk modul Komposisi Tubuh di apps/mobile, dipakai selama lapisan frontend dibangun sebelum API tersedia. Mendefinisikan CircumferencePoint dan BodyMeasurement sesuai kontrak PRD, konstanta STUB_CIRCUMFERENCE_POINTS berisi tujuh titik ukur beserta petunjuk posisi pita, dan helper findPoint. BodyMeasurement menyimpan valueCm kanonis sekaligus recordedUnit agar nilai lama tetap ditampilkan dalam satuan saat dicatat."
+  },
+  "apps/mobile/app/composition/measurements.tsx": {
+    "summary": "Layar Expo Router /composition/measurements untuk fitur Catat Lingkar Tubuh. Menyediakan toggle satuan bawaan, pemilih titik ukur, input nilai, dan daftar entri sesi berjalan di atas data tiruan. Inti perilakunya: setiap entri baru terbuka memakai satuan bawaan dari useMeasurementUnit, override per-entri direset setelah simpan, dan nilai tersimpan dikonversi lewat helper @running/core sehingga mengganti satuan bawaan tidak pernah mengubah catatan lama.",
+    "sections": [
+      {
+        "symbol": "MeasurementsScreen",
+        "startLine": 55,
+        "endLine": 300,
+        "summary": "Komponen layar utama: menahan render sampai preferensi terbaca, menurunkan entryUnit dari override atau satuan bawaan, memvalidasi input lewat parseLength, menyimpan nilai sebagai sentimeter kanonis, lalu mengosongkan override agar entri berikutnya kembali ke satuan bawaan."
+      },
+      {
+        "symbol": "UnitToggle",
+        "startLine": 305,
+        "endLine": 365,
+        "summary": "Segmented control dua opsi cm/inci dengan peran aksesibilitas radiogroup dan label deskriptif, dipakai untuk satuan bawaan maupun satuan satu entri."
+      },
+      {
+        "symbol": "EntryRow",
+        "startLine": 367,
+        "endLine": 420,
+        "summary": "Baris satu pengukuran tersimpan: menampilkan nilai dalam satuan bawaan saat ini dan mencantumkan satuan asli bila keduanya berbeda."
+      }
+    ]
+  },
+  "apps/mobile/src/lib/measurement-units.test.ts": {
+    "summary": "Uji Vitest untuk lapisan penyimpanan preferensi satuan ukur di apps/mobile dengan AsyncStorage dimock. Memastikan bawaan cm untuk atlet baru, satuan yang disimpan terbaca kembali untuk entri berikutnya, preferensi bertahan setelah modul di-reset (simulasi restart aplikasi), nilai tersimpan yang tidak dikenal dan kegagalan penyimpanan jatuh ke cm, serta clearDefaultUnit mengembalikan keadaan ke cm saat sign-out."
   }
 }
