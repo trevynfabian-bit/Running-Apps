@@ -54,21 +54,13 @@
     "summary": "Bootstrap server API: memuat env(), menjalankan runMigrations, membuat app Hono lewat createApp, serve di API_PORT dengan @hono/node-server, dan menjalankan worker in-process yang memanggil processQueuedJobs tiap 15 detik untuk menguras antrean sync_jobs. Menangani SIGINT dan SIGTERM untuk shutdown rapi dan mencatat kegagalan start lewat logger."
   },
   "apps/api/src/app.ts": {
-    "summary": "Perakitan aplikasi Hono lewat createApp: middleware CORS, logging request tanpa body, endpoint GET /health, satu batas autentikasi terpusat untuk /api/* dengan allowlist path publik (/api/auth/*, /api/webhooks/*, /api/connections/:provider/callback) yang selain itu memanggil requireAuth. Memount router authRoutes di /api/auth, connectionRoutes di /api/connections, webhookRoutes di /api/webhooks, dan appRoutes di /api. Error boundary mengubah ApiError dan ZodError menjadi envelope error stabil (code, message, details), error lain menjadi 500 generik dengan detail hanya di log; notFound mengembalikan 404 JSON.",
-    "sections": [
-      {
-        "symbol": "createApp",
-        "startLine": 21,
-        "endLine": 130,
-        "summary": "Membangun instance Hono: CORS, logger request, /health, middleware auth dengan PUBLIC_PATHS, mounting empat router, onError untuk ApiError/ZodError/500, dan notFound 404."
-      }
-    ]
+    "summary": "Perakitan aplikasi Hono @running/api, dipisah dari bootstrap server agar test bisa memanggil seluruh stack routing lewat app.request. Memasang CORS, logging permintaan tanpa body, endpoint /health, satu batas autentikasi dengan allowlist PUBLIC_PATHS, lalu me-mount route auth, composition, connections, webhooks, dan app. Error boundary mengubah ApiError dan ZodError menjadi envelope error yang stabil dan menyembunyikan detail internal pada 500."
   },
   "apps/api/src/env.ts": {
-    "summary": "Konfigurasi environment yang divalidasi zod sekali saat boot: NODE_ENV, API_PORT, API_PUBLIC_URL, DATABASE_URL, PGLITE_DIR, AUTH_JWT_SECRET, TOKEN_ENCRYPTION_KEY, USE_MOCK_DATA, kredensial Strava dan WHOOP (client id, client secret, redirect uri, webhook verify token atau secret), serta AI_API_KEY, AI_MODEL, AI_BASE_URL. loadEnv menghitung flag stravaConfigured, whoopConfigured, aiConfigured dan menolak start di production tanpa JWT secret minimal 32 karakter, encryption key 64 hex, dan DATABASE_URL. env() meng-cache hasil; setEnvForTesting mengganti cache untuk test."
+    "summary": "Konfigurasi environment @running/api yang divalidasi sekali saat boot dengan Zod sehingga deployment salah konfigurasi gagal cepat. Mengekspor loadEnv, env, dan setEnvForTesting; mencakup port dan URL publik, DATABASE_URL atau PGLITE_DIR, kunci autentikasi dan enkripsi, kredensial Strava dan WHOOP, konfigurasi AI, serta PHOTO_STORAGE_DIR dan PHOTO_MAX_BYTES untuk penyimpanan foto komposisi. Produksi ditolak bila rahasia pelindung data atlet belum diisi."
   },
   "apps/api/src/errors.ts": {
-    "summary": "Kelas ApiError (status HTTP, code dari API_ERROR_CODES, pesan yang aman ditampilkan ke atlet, details opsional) dengan toBody untuk envelope error, plus helper pembuat error: notFound (404), badRequest (400 validation_failed), providerNotConnected (409), providerUnavailable (503), tokenExpired (401)."
+    "summary": "Tipe error @running/api. ApiError membawa status HTTP, kode stabil dari API_ERROR_CODES, dan kalimat yang aman ditampilkan ke atlet. Menyediakan helper notFound, badRequest, providerNotConnected, providerUnavailable, tokenExpired, photoTooLarge (413), dan unsupportedPhotoType (415). Stack trace dan detail internal provider tidak pernah ikut ke respons."
   },
   "apps/api/src/db/client.ts": {
     "summary": "Klien database Drizzle dengan dua driver dan satu schema: postgres-js bila DATABASE_URL diset (pool max 10, connect timeout 10 detik), selain itu PGlite embedded pada folder PGLITE_DIR atau memory:// untuk test. getDb mengembalikan handle singleton berisi db, raw driver, kind (pglite atau postgres), dan close; resetDbForTesting mengosongkan cache handle."
@@ -77,55 +69,31 @@
     "summary": "Runner migrasi: runMigrations membuka handle DB lalu memanggil migrator drizzle sesuai driver (pglite atau postgres-js) dengan folder migrasi apps/api/drizzle (MIGRATIONS_FOLDER). Migrasi yang sudah diterapkan dicatat di tabel __drizzle_migrations sehingga aman diulang. Bisa dijalankan langsung sebagai script pnpm db:migrate."
   },
   "apps/api/src/db/schema.ts": {
-    "summary": "Skema PostgreSQL via Drizzle, sumber kebenaran migrasi. Konvensi: timestamptz UTC, tanggal latihan sebagai date lokal atlet, unique (connection, external_id) pada tabel provider untuk idempotensi, payload raw disimpan. Tabel identitas: users, athleteProfiles (JSONB background, availability, constraints, notifications, marker HR, hasCompletedOnboarding), bodyMeasurements append-only per provider. providerConnections menyimpan status, externalUserId, scopes, token OAuth terenkripsi, syncCursor. Tabel raw provider: stravaActivities, whoopCycles, whoopRecoveries, whoopSleep, whoopWorkouts, healthkitSamples. canonicalWorkouts (riwayat terdeduplikasi) dan workoutSources (join provenance dengan contributedFields). Planning: trainingPlans, trainingBlocks, plannedWorkouts, raceGoals, raceResults. State harian: checkIns, recoveryStates, trainingLoads, coachDecisions, coachInsights, coachMemory, coachConversations, weeklySummaries. Operasional: syncJobs (antrean durable dengan runAfter), syncEvents (webhook dedup event_key), auditLogs. Mengekspor objek schema untuk drizzle.",
+    "summary": "Skema database PostgreSQL via Drizzle untuk @running/api. Mendefinisikan tabel identitas (users, athlete_profiles, body_measurements provider), koneksi provider, data mentah Strava/WHOOP/HealthKit, canonical_workouts, rencana latihan, state harian, coaching, sync, serta modul komposisi tubuh: body_composition_sessions, composition_photos, circumference_points, dan composition_measurements. Konvensi: timestamp UTC timestamptz, tanggal lokal sebagai date, dan unik (koneksi, id eksternal) untuk idempotensi.",
     "sections": [
       {
-        "symbol": "users, athleteProfiles, bodyMeasurements",
-        "startLine": 40,
-        "endLine": 110,
-        "summary": "Tabel identitas: kredensial user, profil atlet dengan preferensi JSONB dan marker fisiologis, serta pengukuran tubuh append-only unik per (athlete, metric, provider, measuredAt)."
+        "symbol": "bodyCompositionSessions",
+        "startLine": 713,
+        "endLine": 760,
+        "summary": "Tabel body_composition_sessions: satu momen dokumentasi milik athlete_profiles dengan captured_at instan dan local_date kalender atlet; sengaja tidak unik per hari agar pemotretan ulang di hari yang sama tetap dua sesi."
       },
       {
-        "symbol": "providerConnections",
-        "startLine": 116,
-        "endLine": 146,
-        "summary": "Koneksi provider per (athlete, provider): status, externalUserId untuk routing webhook, scopes, token terenkripsi AES-256-GCM, lastSyncedAt, lastSyncError, syncCursor."
+        "symbol": "compositionPhotos",
+        "startLine": 762,
+        "endLine": 805,
+        "summary": "Tabel composition_photos: satu foto per sisi per sesi, unik pada (session_id, side) sehingga mengulang satu sisi berarti mengganti; menyimpan storage_key buatan server yang juga unik, dan cascade dari sesi."
       },
       {
-        "symbol": "stravaActivities, whoopCycles, whoopRecoveries, whoopSleep, whoopWorkouts, healthkitSamples",
-        "startLine": 152,
-        "endLine": 367,
-        "summary": "Tabel rekaman mentah per provider dengan kolom ternormalisasi plus jsonb raw, unik pada (connectionId, externalId), id WHOOP disimpan sebagai text."
+        "symbol": "circumferencePoints",
+        "startLine": 807,
+        "endLine": 840,
+        "summary": "Tabel circumference_points: data referensi titik ukur (code unik, label, guide_text, sort_order, is_active) yang di-seed lewat migrasi dan sama untuk semua atlet."
       },
       {
-        "symbol": "canonicalWorkouts, workoutSources",
-        "startLine": 373,
-        "endLine": 438,
-        "summary": "Workout kanonis terdeduplikasi (metrik, splits, samples, route, sourceConfidence, plannedWorkoutId, analysis) dan tabel sumber dengan PK gabungan serta unique (provider, externalId)."
-      },
-      {
-        "symbol": "trainingPlans, trainingBlocks, plannedWorkouts, raceGoals, raceResults",
-        "startLine": 444,
-        "endLine": 551,
-        "summary": "Tabel perencanaan: plan dengan generationBasis, blok periodisasi dengan target jarak mingguan, sesi terjadwal dengan structure dan modifiedFrom, target lomba, dan hasil lomba sebagai jangkar fitness."
-      },
-      {
-        "symbol": "checkIns, recoveryStates, trainingLoads, coachDecisions, coachInsights, coachMemory, coachConversations, weeklySummaries",
-        "startLine": 557,
-        "endLine": 711,
-        "summary": "State harian turunan yang unik per (athleteId, date) atau week_start, memori coach (stated_preference, observed_pattern, temporary_condition), dan riwayat percakapan coach."
-      },
-      {
-        "symbol": "syncJobs, syncEvents, auditLogs",
-        "startLine": 717,
-        "endLine": 787,
-        "summary": "Antrean sync durable dengan attempts dan runAfter untuk backoff, event webhook dengan unique (provider, eventKey), dan audit log tanpa token atau nilai kesehatan mentah."
-      },
-      {
-        "symbol": "schema",
-        "startLine": 789,
-        "endLine": 818,
-        "summary": "Objek schema yang mengumpulkan seluruh tabel untuk klien Drizzle."
+        "symbol": "compositionMeasurements",
+        "startLine": 842,
+        "endLine": 890,
+        "summary": "Tabel composition_measurements: satu lingkar per sesi dengan value_cm kanonis dan recorded_unit; unik pada (session_id, point_id) sehingga pengukuran ulang mengganti, dan referensi ke titik ukur bersifat restrict agar riwayat tidak ikut terhapus."
       }
     ]
   },
@@ -618,91 +586,13 @@
     "summary": "Konfigurasi build packages/contracts: extends tsconfig.json dengan noEmit false agar menghasilkan output, exclude file test dan __fixtures__."
   },
   "packages/contracts/src/index.ts": {
-    "summary": "Kontrak wire antara app mobile dan API sebagai skema Zod (sumber kebenaran tunggal) beserta tipe turunannya. Primitif: isoDateTime, localDate, providerIdSchema, confidenceSchema, workoutTypeSchema, sportTypeSchema, decisionTypeSchema, trainingStateSchema, recoveryBandSchema. Atlet: availabilitySchema, constraintsSchema, backgroundSchema, preferencesSchema, athleteProfileSchema, updateAthleteProfileSchema. Workout: workoutSourceRefSchema, workoutSummarySchema, workoutAnalysisSchema, workoutDetailSchema, createManualWorkoutSchema. Plan: intensityTargetSchema, workoutStepSchema, workoutStructureSchema, plannedWorkoutSchema, trainingBlockSchema, trainingPlanSchema, planWeekSchema, generatePlanSchema. Recovery: checkInSchema, recoveryStateSchema. Coaching: reasonSchema, coachDecisionSchema. dashboardSchema. Progress: trendSchema, seriesPointSchema, progressSchema. Koneksi: connectionStatusSchema, connectionSchema, syncResultSchema. AI coach: coachMessageSchema, claimKindSchema, coachResponseSchema. Race: createRaceGoalSchema, raceGoalSchema. weeklyReviewSchema. Auth: signUpSchema (password minimal 10 karakter), signInSchema, authResponseSchema. Error: apiErrorSchema dan konstanta API_ERROR_CODES (unauthorized, forbidden, not_found, validation_failed, provider_unavailable, provider_not_connected, token_expired, rate_limited, conflict, internal_error).",
+    "summary": "Paket @running/contracts: skema Zod dan tipe DTO sebagai sumber kebenaran tunggal format wire antara aplikasi mobile dan API. Mencakup primitif tanggal, profil atlet, workout, rencana latihan, recovery, coaching, koneksi provider, envelope error dengan API_ERROR_CODES, serta modul komposisi tubuh: photoSideSchema, createCompositionSessionSchema, compositionPhotoSchema, lengthUnitSchema, CIRCUMFERENCE_BOUNDS, circumferencePointSchema, recordMeasurementSchema, recordMeasurementsSchema, metricHistoryEntrySchema, dan compositionSessionSchema.",
     "sections": [
       {
-        "symbol": "primitives",
-        "startLine": 17,
-        "endLine": 73,
-        "summary": "Skema dasar tanggal, provider id, confidence, tipe workout, sport, decision, training state, dan band recovery."
-      },
-      {
-        "symbol": "athlete schemas",
-        "startLine": 79,
-        "endLine": 153,
-        "summary": "Availability, constraints, background, preferences, profil atlet lengkap, dan versi partial untuk update."
-      },
-      {
-        "symbol": "workout schemas",
-        "startLine": 159,
-        "endLine": 255,
-        "summary": "Ringkasan dan detail workout, analisis pasca-lari, dan input workout manual."
-      },
-      {
-        "symbol": "plan schemas",
-        "startLine": 261,
-        "endLine": 384,
-        "summary": "Target intensitas, langkah dan struktur sesi, planned workout, blok, plan, minggu plan, dan input generate plan."
-      },
-      {
-        "symbol": "recovery and check-in",
-        "startLine": 390,
-        "endLine": 418,
-        "summary": "Skema check-in pagi skala 1 sampai 5 dan state recovery komposit."
-      },
-      {
-        "symbol": "coaching",
-        "startLine": 424,
-        "endLine": 444,
-        "summary": "Reason berbobot dan keputusan coach dengan plan sebelum dan sesudah."
-      },
-      {
-        "symbol": "dashboardSchema",
-        "startLine": 450,
-        "endLine": 513,
-        "summary": "Respons dashboard harian lengkap."
-      },
-      {
-        "symbol": "progress schemas",
-        "startLine": 519,
-        "endLine": 575,
-        "summary": "Trend, titik seri, dan respons progress termasuk prediksi lomba."
-      },
-      {
-        "symbol": "connections and sync",
-        "startLine": 581,
-        "endLine": 613,
-        "summary": "Status koneksi provider dan hasil sync."
-      },
-      {
-        "symbol": "AI coach schemas",
-        "startLine": 619,
-        "endLine": 652,
-        "summary": "Pesan ke coach dan respons dengan claims berlabel epistemik, keyMetrics, dataUsed, generatedWithoutLlm."
-      },
-      {
-        "symbol": "race goals",
-        "startLine": 658,
-        "endLine": 694,
-        "summary": "Input race goal dan skema race goal dengan analisis gap dan readiness."
-      },
-      {
-        "symbol": "weeklyReviewSchema",
-        "startLine": 700,
-        "endLine": 724,
-        "summary": "Bentuk review mingguan."
-      },
-      {
-        "symbol": "auth schemas",
-        "startLine": 730,
-        "endLine": 749,
-        "summary": "Sign up, sign in, dan respons auth dengan token."
-      },
-      {
-        "symbol": "apiErrorSchema, API_ERROR_CODES",
-        "startLine": 759,
-        "endLine": 781,
-        "summary": "Envelope error seragam dan kode error stabil."
+        "symbol": "body composition schemas",
+        "startLine": 754,
+        "endLine": 940,
+        "summary": "Kontrak modul komposisi tubuh: permintaan pencatatan membawa value dan unit yang diketik atlet (bukan nilai terkonversi) dengan batas kewajaran per satuan, satu titik ukur hanya boleh muncul sekali per payload, dan entri riwayat membedakan tanpa pembanding dari perubahan nol."
       }
     ]
   },
@@ -716,7 +606,7 @@
     "summary": "Konfigurasi build packages/core: extends tsconfig.json dengan noEmit false, exclude file test dan folder __fixtures__ dari output."
   },
   "packages/core/src/index.ts": {
-    "summary": "Barrel @running/core yang mengekspor seluruh domain (athlete, coaching, provenance, race, recovery, training, workout), engine (decision, dedup, efficiency, fitness, load, planner, race, recovery, review, state, trends, zones), units, dan util (stats, time). Seluruh paket deterministik dan bebas efek samping: tanpa I/O, tanpa jam implisit, tanpa randomness; id dan timestamp diinjeksi pemanggil."
+    "summary": "Barrel @running/core: mengekspor model domain (athlete, coaching, provenance, race, recovery, training, workout), seluruh engine termasuk composition, decision, dedup, efficiency, fitness, load, planner, race, recovery, review, state, trends, dan zones, serta utilitas satuan, statistik, dan waktu. Pustaka TypeScript murni tanpa dependensi runtime, deterministik dan bebas efek samping; id dan timestamp selalu diinjeksikan pemanggil."
   },
   "packages/core/src/__fixtures__/index.ts": {
     "summary": "Fixture test deterministik yang meniru data latihan nyata: konstanta TEST_TZ Asia/Jakarta, makeAthlete (profil lengkap dengan background, availability, constraints, preferences, markers, dan satu race result 5K), makeProviderWorkout, makeCanonicalWorkout, makeSteadySamples (stream sampel lari steady dengan cardiac drift dan jitter terkontrol), makeDailyLoads (beban harian mengikuti pola mingguan), dan WORKOUT_TYPES_FOR_TEST."
@@ -1169,7 +1059,7 @@
     ]
   },
   "apps/mobile/src/lib/composition-history.ts": {
-    "summary": "Menyusun riwayat satu titik ukur dari kumpulan sesi komposisi tubuh di apps/mobile. Mengekspor tipe MetricHistoryEntry serta fungsi murni historyForPoint dan latestForPoint. Hasilnya terurut terbaru-dulu dan tiap entri membawa changeCm terhadap sesi lebih lama berikutnya; sesi yang tidak mengukur titik tersebut dilewati, dan entri tertua sengaja tanpa changeCm agar berbeda dari perubahan nol."
+    "summary": "Menyusun riwayat satu titik ukur dari kumpulan sesi komposisi tubuh di apps/mobile. Mengekspor tipe MetricHistoryEntry serta historyForPoint dan latestForPoint. Pengurutan terbaru-dulu dan perhitungan changeCm didelegasikan ke withChanges dari @running/core, fungsi yang sama dipakai API, sehingga angka selisih di layar dan dari server identik secara konstruksi. Sesi yang tidak mengukur titik tersebut dilewati."
   },
   "apps/mobile/src/lib/composition-history-stub.ts": {
     "summary": "Data tiruan sesi komposisi tubuh masa lalu untuk apps/mobile, berdiri sebagai pengganti endpoint riwayat selama lapisan frontend dibangun. Mengekspor STUB_SESSION_HISTORY berisi empat sesi selama tiga bulan dengan lingkar pinggang menurun, satu sesi yang diukur memakai pita inci, dan satu sesi yang melewatkan titik paha agar kasus tersebut ikut terlihat di UI."
@@ -1205,5 +1095,101 @@
         "summary": "Segmented control dua opsi cm/inci dengan peran aksesibilitas radiogroup, dipakai oleh form entri dan editor koreksi."
       }
     ]
+  },
+  "apps/api/src/services/photo-storage.ts": {
+    "summary": "Layanan penyimpanan foto komposisi tubuh untuk @running/api dengan satu interface PhotoStorage dan driver filesystem. Mengekspor PHOTO_SIDES, validatePhotoUpload, photoStorage, dan resetPhotoStorageForTesting. Kunci penyimpanan selalu dibuat server dengan komponen acak, tipe konten diverifikasi lewat signature byte JPEG/PNG/WebP/HEIC (SVG ditolak), dan penghapusan tersedia per foto, per sesi, serta per atlet.",
+    "sections": [
+      {
+        "symbol": "sniff",
+        "startLine": 96,
+        "endLine": 130,
+        "summary": "Mengenali format sebenarnya dari byte awal berkas agar dokumen yang menyamar sebagai image tidak tersimpan dan kemudian disajikan sebagai gambar."
+      },
+      {
+        "symbol": "validatePhotoUpload",
+        "startLine": 150,
+        "endLine": 185,
+        "summary": "Memvalidasi ukuran terhadap PHOTO_MAX_BYTES serta kecocokan tipe yang dideklarasikan dengan byte aslinya; melempar ApiError 413 atau 415."
+      },
+      {
+        "symbol": "createFilesystemStorage",
+        "startLine": 205,
+        "endLine": 300,
+        "summary": "Driver filesystem: resolve kunci dengan pemeriksaan pola dan penguncian di dalam root, menulis berkas, membaca kembali, serta menghapus per berkas dan per prefix sesi/atlet."
+      }
+    ]
+  },
+  "apps/api/src/routes/composition.ts": {
+    "summary": "Route Hono modul komposisi tubuh di @running/api, dipasang pada /api/composition di dalam batas autentikasi. Menyediakan POST /sessions (unggah empat foto multipart), GET /sessions (daftar sesi milik atlet beserta foto dan pengukuran), POST /sessions/:sessionId/measurements, PATCH dan DELETE /sessions/:sessionId/measurements/:pointCode, serta GET /points/:code/history. Semua endpoint memeriksa kepemilikan sesi lebih dulu dan melaporkan sesi milik orang lain sebagai tidak ditemukan.",
+    "sections": [
+      {
+        "symbol": "POST /sessions",
+        "startLine": 120,
+        "endLine": 250,
+        "summary": "Menerima empat foto multipart, memvalidasi semuanya sebelum satu byte ditulis, menyimpan berkas lalu menulis baris sesi dan foto dalam satu transaksi, dan menghapus berkas bila transaksi gagal."
+      },
+      {
+        "symbol": "GET /sessions",
+        "startLine": 255,
+        "endLine": 330,
+        "summary": "Mengembalikan sesi milik atlet terbaru-dulu dengan foto berurut front/back/left/right dan pengukuran di-join ke circumference_points untuk membawa kode titik."
+      },
+      {
+        "symbol": "POST /sessions/:sessionId/measurements",
+        "startLine": 360,
+        "endLine": 440,
+        "summary": "Mengubah nilai dan satuan yang diketik atlet menjadi sentimeter kanonis lewat @running/core lalu melakukan upsert pada (session_id, point_id); kode titik tak dikenal ditolak dengan namanya disebut."
+      },
+      {
+        "symbol": "GET /points/:code/history",
+        "startLine": 470,
+        "endLine": 545,
+        "summary": "Riwayat satu titik ukur terbaru-dulu dengan selisih antar sesi dari withChanges; mengambil satu baris ekstra di belakang halaman agar entri terlama pada halaman tetap memperoleh selisihnya."
+      },
+      {
+        "symbol": "PATCH and DELETE measurements",
+        "startLine": 560,
+        "endLine": 660,
+        "summary": "Koreksi nilai memakai skema yang sama dengan pencatatan dan tidak mengubah captured_at; penghapusan melaporkan apakah ada yang terhapus sehingga aman diulang, dan sesi tetap ada meski kehilangan lingkar terakhirnya."
+      }
+    ]
+  },
+  "packages/core/src/engines/composition.ts": {
+    "summary": "Engine perhitungan komposisi tubuh di @running/core, murni dan deterministik. Mengekspor tipe CompositionReading dan WithChange serta fungsi withChanges yang mengurutkan pembacaan terbaru-dulu dan melekatkan changeCm terhadap pembacaan lebih lama berikutnya, plus netChangeCm untuk perubahan bersih satu rangkaian. Dipakai bersama oleh apps/api dan apps/mobile sehingga angka selisih di server dan di aplikasi identik secara konstruksi.",
+    "sections": [
+      {
+        "symbol": "withChanges",
+        "startLine": 33,
+        "endLine": 62,
+        "summary": "Mengurutkan pembacaan terbaru-dulu lalu menghitung changeCm terhadap tetangga lebih lama; menerima olderNeighbour untuk paginasi agar entri terlama pada satu halaman tetap punya selisih."
+      },
+      {
+        "symbol": "netChangeCm",
+        "startLine": 64,
+        "endLine": 82,
+        "summary": "Perubahan bersih dari pembacaan tertua ke terbaru; mengembalikan undefined untuk kurang dari dua pembacaan karena satu pengukuran adalah posisi, bukan arah."
+      }
+    ]
+  },
+  "apps/api/src/db/composition-schema.test.ts": {
+    "summary": "Uji Vitest untuk batasan skema komposisi tubuh di @running/api, dijalankan dengan migrasi nyata di atas Postgres tertanam. Memastikan sesi menyimpan instan dan tanggal lokal terpisah, dua sesi boleh di hari yang sama, composition_photos unik per (sesi, sisi) dan per storage key, cascade penghapusan sesi serta akun, circumference_points ter-seed migrasi, dan composition_measurements unik per (sesi, titik) dengan referensi titik bersifat restrict."
+  },
+  "apps/api/src/routes/composition.test.ts": {
+    "summary": "Uji end-to-end route komposisi tubuh di @running/api dengan Postgres tertanam dan penyimpanan berkas nyata. Mencakup unggah empat foto multipart beserta penolakan set parsial dan berkas palsu, daftar sesi yang tidak pernah membocorkan data atlet lain, pencatatan pengukuran dengan konversi satuan dan upsert, riwayat per titik ukur beserta selisih lintas halaman, serta koreksi dan penghapusan pengukuran termasuk pemeriksaan kepemilikan yang menjawab 404."
+  },
+  "apps/api/src/services/photo-storage.test.ts": {
+    "summary": "Uji Vitest layanan penyimpanan foto di @running/api. Menegaskan penolakan tipe konten yang tidak cocok dengan byte aslinya dan dokumen yang menyamar sebagai gambar, berkas kosong atau melebihi batas, kunci hasil rekayasa yang mencoba keluar dari root penyimpanan, serta memastikan kunci dibuat server dan tidak pernah dipakai ulang, dan penghapusan per foto, per sesi, dan per atlet berjalan terisolasi."
+  },
+  "packages/contracts/src/composition.test.ts": {
+    "summary": "Uji Vitest kontrak komposisi tubuh di @running/contracts. Memastikan lengthUnitSchema hanya menerima cm dan in, permintaan pencatatan membawa value dan unit apa adanya tanpa nilai terkonversi, batas kewajaran menangkap titik desimal salah tempat dan mengikuti satuan yang diberikan, satu titik ukur tidak boleh muncul dua kali dalam satu payload, dan entri riwayat membedakan changeCm absen dari changeCm nol."
+  },
+  "packages/core/src/engines/composition.test.ts": {
+    "summary": "Uji Vitest engine komposisi di @running/core. Memastikan withChanges mengurutkan terbaru-dulu apa pun urutan masukan, melekatkan selisih terhadap pembacaan lebih lama, membiarkan entri tertua tanpa changeCm agar berbeda dari perubahan nol, memakai olderNeighbour untuk entri terlama pada satu halaman, meneruskan field tambahan pemanggil, dan tidak memutasi masukan; netChangeCm menolak menyebut satu pembacaan sebagai arah."
+  },
+  "apps/api/drizzle/0001_body_composition_photos.sql": {
+    "summary": "Migrasi Drizzle 0001 yang membuat tabel body_composition_sessions dan composition_photos beserta foreign key cascade ke athlete_profiles dan ke sesi, indeks (athlete_id, captured_at) untuk pembacaan riwayat, serta indeks unik (session_id, side) dan storage_key."
+  },
+  "apps/api/drizzle/0002_composition_measurements.sql": {
+    "summary": "Migrasi Drizzle 0002 yang membuat tabel circumference_points dan composition_measurements, dengan foreign key cascade ke sesi dan restrict ke titik ukur, indeks unik code dan (session_id, point_id), serta indeks (point_id, captured_at). Migrasi ini juga menyisipkan tujuh titik ukur referensi memakai ON CONFLICT agar pemutaran ulang tidak menimbulkan duplikat."
   }
 }
