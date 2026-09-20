@@ -711,6 +711,84 @@ export const weeklySummaries = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// Body composition
+// ---------------------------------------------------------------------------
+
+/**
+ * A body composition session: one documentation moment.
+ *
+ * The athlete stands in the same spot, takes their four photos, and runs a tape
+ * round each measure point. Everything recorded in that sitting hangs off one
+ * session row, because a later session is compared against the whole set rather
+ * than against individual readings.
+ *
+ * `capturedAt` is the instant; `localDate` is the calendar day in the athlete's
+ * timezone. Both are kept for the reason stated at the top of this file — "was
+ * this the September session?" is a local-calendar question, and deriving it
+ * from a UTC instant at read time gets it wrong either side of midnight.
+ *
+ * Deliberately not unique per day. An athlete who takes a bad set of photos in
+ * the morning and redoes them properly that evening has two sessions, and the
+ * database is the wrong place to argue with them about it.
+ */
+export const bodyCompositionSessions = pgTable(
+  'body_composition_sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    athleteId: uuid('athlete_id')
+      .notNull()
+      .references(() => athleteProfiles.id, { onDelete: 'cascade' }),
+    capturedAt: timestamp('captured_at', { withTimezone: true }).notNull(),
+    localDate: date('local_date').notNull(),
+    note: text('note'),
+    createdAt,
+    updatedAt,
+  },
+  (t) => [
+    // History is always read newest-first for one athlete.
+    index('body_composition_sessions_athlete_captured').on(t.athleteId, t.capturedAt),
+  ],
+);
+
+/**
+ * One body photo, per side, per session.
+ *
+ * Unique on (session, side): a session holds at most one front, one back, one
+ * left and one right. "Retake one side" is a replacement, not a second front
+ * photo — and if two ever coexisted, the before/after comparison would have to
+ * guess which one the athlete meant. The database settles it instead.
+ *
+ * Only the storage key is kept, never a client-supplied URI. The server owns
+ * where these live and mints access to them; trusting a path from the device
+ * would let one athlete's session reference another's file.
+ *
+ * `onDelete: 'cascade'` is the whole privacy story for photos: deleting a
+ * session, or an account, takes its rows with it in one statement rather than
+ * relying on cleanup code that might not run.
+ */
+export const compositionPhotos = pgTable(
+  'composition_photos',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => bodyCompositionSessions.id, { onDelete: 'cascade' }),
+    side: text('side').notNull(), // front | back | left | right
+    storageKey: text('storage_key').notNull(),
+    contentType: text('content_type').notNull(),
+    byteSize: integer('byte_size').notNull(),
+    capturedAt: timestamp('captured_at', { withTimezone: true }).notNull(),
+    createdAt,
+    updatedAt,
+  },
+  (t) => [
+    uniqueIndex('composition_photos_session_side_unique').on(t.sessionId, t.side),
+    // Deleting a storage object needs to find its row from the key alone.
+    uniqueIndex('composition_photos_storage_key_unique').on(t.storageKey),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // Sync and observability
 // ---------------------------------------------------------------------------
 
@@ -812,6 +890,8 @@ export const schema = {
   coachMemory,
   coachConversations,
   weeklySummaries,
+  bodyCompositionSessions,
+  compositionPhotos,
   syncJobs,
   syncEvents,
   auditLogs,
