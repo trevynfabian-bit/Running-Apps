@@ -116,6 +116,17 @@ export const STUB_ESTIMATES: readonly BodyFatEstimate[] = [
   },
 ];
 
+/**
+ * Whether the latest session has a photo set.
+ *
+ * Stubbed, and deliberately a named constant rather than something derived: the
+ * client's session model carries measurements but not photos yet — those live
+ * only server-side until the capture screen lands — so there is nothing honest
+ * to derive this from. This is the seam where the real check goes, and naming
+ * it keeps the gap visible instead of hiding it behind a plausible expression.
+ */
+export const STUB_SESSION_HAS_PHOTOS = true;
+
 export function estimateFor(
   estimates: readonly BodyFatEstimate[],
   method: BodyFatMethod,
@@ -164,4 +175,82 @@ export function bandGeometry(low: number, high: number): { start: number; width:
   const start = scalePosition(Math.min(low, high));
   const end = scalePosition(Math.max(low, high));
   return { start, width: Math.max(end - start, MIN_BAND_FRACTION) };
+}
+
+// ---------------------------------------------------------------------------
+// Photo method availability
+// ---------------------------------------------------------------------------
+
+/**
+ * Why the photo method can or cannot run right now.
+ *
+ * Separate from `ServiceStatus` because two different things stop it, and they
+ * call for different answers. "The service is down" is ours to apologise for;
+ * "this session has no photos" is something the athlete can fix in a minute.
+ * Collapsing both into "unavailable" would send someone to wait for a service
+ * that was never the problem.
+ */
+export type AiAvailability = 'ready' | 'no_photos' | 'unavailable' | 'failed';
+
+export interface AvailabilityMessage {
+  availability: AiAvailability;
+  title: string;
+  body: string;
+  /** Label for the way out, when there is one the athlete can act on. */
+  action?: 'switch_to_formula' | 'take_photos';
+  /** True when the formula is the recommended path right now. */
+  suggestFormula: boolean;
+}
+
+/**
+ * Decide what to tell the athlete about the photo method.
+ *
+ * Every branch that cannot produce a result points at the formula, because the
+ * formula needs no server and no network: it is the path that always works, and
+ * an athlete told only that something is broken has been given a dead end.
+ *
+ * The missing-photos branch does not push the formula as hard — taking four
+ * photos is the thing they came to do, and redirecting them away from it would
+ * be solving our problem rather than theirs.
+ */
+export function aiAvailabilityMessage(
+  status: ServiceStatus | undefined,
+  hasPhotos: boolean,
+): AvailabilityMessage {
+  if (!hasPhotos) {
+    return {
+      availability: 'no_photos',
+      title: 'No photos in this session',
+      body: 'The photo method reads the four body photos from a session. Take a set, or use the measurements method, which needs only your tape and your height.',
+      action: 'take_photos',
+      suggestFormula: false,
+    };
+  }
+
+  if (status === 'failed') {
+    return {
+      availability: 'failed',
+      title: 'The photo read failed',
+      body: 'Something went wrong reading your photos. Your photos are untouched. The measurements method runs entirely on this device and needs nothing from our servers.',
+      action: 'switch_to_formula',
+      suggestFormula: true,
+    };
+  }
+
+  if (status !== 'active') {
+    return {
+      availability: 'unavailable',
+      title: 'The photo service is not available',
+      body: 'This method depends on a service we cannot reach right now. The measurements method runs entirely on this device and needs nothing from our servers.',
+      action: 'switch_to_formula',
+      suggestFormula: true,
+    };
+  }
+
+  return {
+    availability: 'ready',
+    title: 'Photo service is running',
+    body: 'Your session photos can be read. The result is a wider band than the measurements method gives, so it is worth reading both.',
+    suggestFormula: false,
+  };
 }

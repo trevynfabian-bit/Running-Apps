@@ -31,6 +31,7 @@ import {
   rangeWidth,
   type BodyFatEstimate,
 } from '../lib/body-fat';
+import type { AvailabilityMessage } from '../lib/body-fat';
 import {
   FORMULA_VARIANTS,
   VARIANT_DESCRIPTIONS,
@@ -1054,6 +1055,76 @@ export function FormulaSteps({ estimate }: { estimate: NavyEstimate }): React.Re
             </Type>
           </View>
         )}
+      </Stack>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Photo service status
+// ---------------------------------------------------------------------------
+
+/**
+ * What the photo method can do right now, and the way forward when it cannot.
+ *
+ * Status on its own is an announcement; status with a route out is help. Every
+ * branch that cannot produce a result offers the measurements method, because
+ * that one needs no server and no network — it is the path that always works,
+ * and an athlete told only that something is broken has been handed a dead end.
+ *
+ * Tone follows severity rather than decorating it: a service outage is not the
+ * athlete's fault and does not warrant an alarm, but it does warrant being
+ * unmissable, so the state is always spelled out in words as well.
+ */
+export function ServiceStatusNotice({
+  message,
+  onSwitchToFormula,
+  onTakePhotos,
+}: {
+  message: AvailabilityMessage;
+  onSwitchToFormula: () => void;
+  onTakePhotos: () => void;
+}): React.ReactElement {
+  const tone =
+    message.availability === 'ready'
+      ? 'positive'
+      : message.availability === 'failed'
+        ? 'negative'
+        : 'caution';
+
+  return (
+    <Card>
+      <Stack gap={spacing.md}>
+        <Stack direction="row" justify="space-between" align="center" gap={spacing.md}>
+          <Type variant="bodyStrong" style={{ flexShrink: 1 }} accessibilityRole="header">
+            {message.title}
+          </Type>
+          {/* The state in words, not only in colour: a status conveyed by hue
+              alone reaches neither a screen reader nor a colour-blind eye. */}
+          <Chip
+            label={
+              message.availability === 'ready'
+                ? 'Running'
+                : message.availability === 'no_photos'
+                  ? 'No photos'
+                  : message.availability === 'failed'
+                    ? 'Failed'
+                    : 'Unavailable'
+            }
+            tone={tone}
+            selected
+          />
+        </Stack>
+
+        <Type variant="body" tone="secondary">
+          {message.body}
+        </Type>
+
+        {message.action === 'switch_to_formula' ? (
+          <Button label="Use the measurements method" onPress={onSwitchToFormula} />
+        ) : message.action === 'take_photos' ? (
+          <Button label="Take session photos" onPress={onTakePhotos} variant="secondary" />
+        ) : null}
       </Stack>
     </Card>
   );

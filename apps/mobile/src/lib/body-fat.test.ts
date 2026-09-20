@@ -12,6 +12,7 @@ import {
   MIN_BAND_FRACTION,
   NON_MEDICAL_NOTE,
   STUB_ESTIMATES,
+  aiAvailabilityMessage,
   bandGeometry,
   estimateFor,
   formatRange,
@@ -154,5 +155,65 @@ describe('bandGeometry', () => {
       expect(start).toBeGreaterThan(0);
       expect(start + width).toBeLessThan(1);
     }
+  });
+});
+
+describe('aiAvailabilityMessage', () => {
+  it('says the service is running when it is', () => {
+    const message = aiAvailabilityMessage('active', true);
+
+    expect(message.availability).toBe('ready');
+    expect(message.suggestFormula).toBe(false);
+    expect(message.action).toBeUndefined();
+  });
+
+  it('distinguishes a missing photo set from a broken service', () => {
+    // Collapsing both into "unavailable" would send someone to wait for a
+    // service that was never the problem.
+    const noPhotos = aiAvailabilityMessage('active', false);
+    const down = aiAvailabilityMessage('unavailable', true);
+
+    expect(noPhotos.availability).toBe('no_photos');
+    expect(down.availability).toBe('unavailable');
+    expect(noPhotos.title).not.toBe(down.title);
+  });
+
+  it('checks for photos before it checks the service', () => {
+    // With no photos there is nothing to send, so the service being down is
+    // not the thing to tell the athlete about.
+    expect(aiAvailabilityMessage('failed', false).availability).toBe('no_photos');
+    expect(aiAvailabilityMessage(undefined, false).availability).toBe('no_photos');
+  });
+
+  it('separates a failed read from an unreachable service', () => {
+    expect(aiAvailabilityMessage('failed', true).availability).toBe('failed');
+    expect(aiAvailabilityMessage('unavailable', true).availability).toBe('unavailable');
+  });
+
+  it('treats an unknown status as unavailable rather than assuming it works', () => {
+    expect(aiAvailabilityMessage(undefined, true).availability).toBe('unavailable');
+  });
+
+  it('always offers a way forward when the photo path cannot run', () => {
+    for (const status of ['unavailable', 'failed'] as const) {
+      const message = aiAvailabilityMessage(status, true);
+
+      // An athlete told only that something is broken has a dead end.
+      expect(message.suggestFormula).toBe(true);
+      expect(message.action).toBe('switch_to_formula');
+      expect(message.body).toContain('measurements method');
+    }
+  });
+
+  it('does not redirect away from photos when photos are what is missing', () => {
+    const message = aiAvailabilityMessage('active', false);
+
+    // Taking four photos is the thing they came to do.
+    expect(message.action).toBe('take_photos');
+    expect(message.suggestFormula).toBe(false);
+  });
+
+  it('reassures that photos survive a failed read', () => {
+    expect(aiAvailabilityMessage('failed', true).body).toContain('photos are untouched');
   });
 });

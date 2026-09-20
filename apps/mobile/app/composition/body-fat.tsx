@@ -24,6 +24,7 @@
 
 import React, { useState } from 'react';
 import { View } from 'react-native';
+import { router } from 'expo-router';
 
 import {
   formatCanonicalLength,
@@ -45,6 +46,8 @@ import {
   METHOD_DESCRIPTIONS,
   METHOD_LABELS,
   STUB_ESTIMATES,
+  STUB_SESSION_HAS_PHOTOS,
+  aiAvailabilityMessage,
   estimateFor,
   formatRange,
   rangeWidth,
@@ -82,6 +85,7 @@ import {
   NonMedicalNotice,
   QuantityField,
   RequirementList,
+  ServiceStatusNotice,
   VariantPicker,
 } from '../../src/components/composition';
 
@@ -161,9 +165,31 @@ export default function BodyFatScreen(): React.ReactElement {
         }
       : undefined;
 
-  // The live result wins over the fixture whenever it exists.
+  /**
+   * Whether the photo method can run, and what to offer if not.
+   *
+   * A session with no photos is a different problem from a service that is
+   * down, and the two get different answers.
+   */
+  const photoAvailability = aiAvailabilityMessage(
+    estimateFor(estimates, 'ai')?.serviceStatus,
+    STUB_SESSION_HAS_PHOTOS,
+  );
+
+  /**
+   * The estimate to display for the chosen method.
+   *
+   * For the formula, a live calculation beats the fixture. For photos, nothing
+   * is shown unless the service could actually have produced it — a result left
+   * on screen while the service is down reads as current, and an athlete has no
+   * way to tell it apart from one taken a minute ago.
+   */
   const shown =
-    method === 'formula' ? (formulaEstimate ?? estimateFor(estimates, 'formula')) : selected;
+    method === 'formula'
+      ? (formulaEstimate ?? estimateFor(estimates, 'formula'))
+      : photoAvailability.availability === 'ready'
+        ? selected
+        : undefined;
 
   const heightError =
     heightText !== '' && (heightCm === undefined || !isPlausibleHeightCm(heightCm))
@@ -178,6 +204,17 @@ export default function BodyFatScreen(): React.ReactElement {
   return (
     <Screen>
       <Stack gap={spacing.xl}>
+        {method === 'ai' ? (
+          <View>
+            <SectionHeader title="Photo service" />
+            <ServiceStatusNotice
+              message={photoAvailability}
+              onSwitchToFormula={() => setMethod('formula')}
+              onTakePhotos={() => router.push('/composition/measurements')}
+            />
+          </View>
+        ) : null}
+
         <View>
           <SectionHeader title="Latest estimate" />
           {shown ? (
