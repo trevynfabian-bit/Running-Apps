@@ -932,6 +932,91 @@ export const compositionSessionSchema = z.object({
 });
 export type CompositionSessionDto = z.infer<typeof compositionSessionSchema>;
 
+// ---------------------------------------------------------------------------
+// Body fat
+// ---------------------------------------------------------------------------
+
+/** Unit a body weight was read in. Separate from every other unit preference. */
+export const massUnitSchema = z.enum(['kg', 'lb']);
+export type MassUnitDto = z.infer<typeof massUnitSchema>;
+
+/**
+ * How an estimate was produced.
+ *
+ * Three values rather than the PRD's `formula` and `ai`, because the plan asks
+ * for two circumference equations and they read different measurements. Storing
+ * both under one `formula` label would mean a session could hold only one of
+ * them, and an athlete comparing the two would lose whichever ran second.
+ */
+export const bodyFatMethodSchema = z.enum(['navy', 'ymca', 'ai']);
+export type BodyFatMethodDto = z.infer<typeof bodyFatMethodSchema>;
+
+/** The two circumference equations, as distinct from the photo path. */
+export const circumferenceMethodSchema = z.enum(['navy', 'ymca']);
+export type CircumferenceMethodDto = z.infer<typeof circumferenceMethodSchema>;
+
+/**
+ * Which of a published equation's coefficient sets to apply.
+ *
+ * Named after the reference populations the equations were fitted on, because
+ * that is what the choice is. It is not a field about the athlete.
+ */
+export const formulaVariantSchema = z.enum(['male', 'female']);
+export type FormulaVariantDto = z.infer<typeof formulaVariantSchema>;
+
+export const confidenceLabelSchema = z.enum(['low', 'moderate', 'high']);
+export const serviceStatusSchema = z.enum(['active', 'unavailable', 'failed']);
+
+/** A quantity as the athlete entered it, with the unit they read it in. */
+const enteredLength = z.object({ value: z.number().positive().finite(), unit: lengthUnitSchema });
+const enteredMass = z.object({ value: z.number().positive().finite(), unit: massUnitSchema });
+
+/**
+ * Ask the server to run a circumference equation over a session.
+ *
+ * Height and weight travel as the athlete entered them, with their unit, for
+ * the same reason measurements do: the conversion belongs in one place, and a
+ * client that converts wrongly should not be able to write a corrupted value.
+ * The circumferences are not sent at all — they are already on the session.
+ */
+export const calculateBodyFatSchema = z.object({
+  method: circumferenceMethodSchema,
+  variant: formulaVariantSchema,
+  height: enteredLength.optional(),
+  weight: enteredMass.optional(),
+});
+export type CalculateBodyFatDto = z.infer<typeof calculateBodyFatSchema>;
+
+export const calculationStepSchema = z.object({
+  label: z.string(),
+  /** The arithmetic with the numbers filled in, for the athlete to follow. */
+  expression: z.string(),
+  value: z.number(),
+  unit: z.string().optional(),
+});
+export type CalculationStepDto = z.infer<typeof calculationStepSchema>;
+
+/**
+ * A stored estimate.
+ *
+ * A band and no single figure, matching the table it comes from: every method
+ * here is built from proxies and none of them measures body fat.
+ */
+export const bodyFatEstimateSchema = z.object({
+  id: z.string(),
+  sessionId: z.string(),
+  method: bodyFatMethodSchema,
+  valueLow: z.number(),
+  valueHigh: z.number(),
+  confidence: confidenceLabelSchema,
+  serviceStatus: serviceStatusSchema.optional(),
+  basis: z.string(),
+  /** Every step that produced a formula result. Absent for the photo path. */
+  steps: z.array(calculationStepSchema).optional(),
+  createdAt: isoDateTime,
+});
+export type BodyFatEstimateDto = z.infer<typeof bodyFatEstimateSchema>;
+
 /**
  * Uniform error envelope. `code` is stable and machine-readable; `message` is
  * athlete-facing and must never contain a stack trace or provider internals.

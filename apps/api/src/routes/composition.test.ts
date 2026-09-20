@@ -802,3 +802,237 @@ describe('correcting and deleting a measurement', () => {
     ).toBe(401);
   });
 });
+
+describe('body fat from circumferences', () => {
+  async function seeded(measurements: Record<string, number>): Promise<string> {
+    const created = (await (await post(sessionForm())).json()) as { id: string };
+
+    await app.request(`/api/composition/sessions/${created.id}/measurements`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        measurements: Object.entries(measurements).map(([pointCode, value]) => ({
+          pointCode,
+          value,
+        })),
+      }),
+    });
+
+    return created.id;
+  }
+
+  async function calculate(sessionId: string, body: unknown, auth = token): Promise<Response> {
+    return app.request(`/api/composition/sessions/${sessionId}/body-fat`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${auth}`, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it('computes a band from the session own measurements', async () => {
+    const sessionId = await seeded({ waist: 86.4, neck: 38.1 });
+
+    const response = await calculate(sessionId, {
+      method: 'navy',
+      variant: 'male',
+      height: { value: 178, unit: 'cm' },
+    });
+
+    expect(response.status).toBe(201);
+    const body = (await response.json()) as {
+      method: string;
+      valueLow: number;
+      valueHigh: number;
+      steps: { label: string }[];
+    };
+
+    expect(body.method).toBe('navy');
+    expect(body.valueHigh).toBeGreaterThan(body.valueLow);
+    // The steps are the feature, so they cross the wire.
+    expect(body.steps.map((step) => step.label)).toContain('Waist minus neck');
+  });
+
+  it('converts height and weight from the units the athlete entered', async () => {
+    const sessionId = await seeded({ waist: 86.4, neck: 38.1 });
+
+    const inCm = (await (
+      await calculate(sessionId, {
+        method: 'navy',
+        variant: 'male',
+        height: { value: 178, unit: 'cm' },
+      })
+    ).json()) as { valueLow: number };
+
+    const inInches = (await (
+      await calculate(sessionId, {
+        method: 'navy',
+        variant: 'male',
+        height: { value: 178 / 2.54, unit: 'in' },
+      })
+    ).json()) as { valueLow: number };
+
+    expect(inInches.valueLow).toBeCloseTo(inCm.valueLow, 1);
+  });
+
+  it('runs the YMCA equation from waist and weight', async () => {
+    const sessionId = await seeded({ waist: 86.4 });
+
+    const response = await calculate(sessionId, {
+      method: 'ymca',
+      variant: 'male',
+      weight: { value: 75, unit: 'kg' },
+    });
+
+    expect(response.status).toBe(201);
+    const body = (await response.json()) as { method: string; steps: { unit?: string }[] };
+
+    expect(body.method).toBe('ymca');
+    // It converts into the units the equation is published in.
+    expect(body.steps.map((step) => step.unit)).toContain('lb');
+  });
+
+  it('keeps both equations for one session', async () => {
+    const sessionId = await seeded({ waist: 86.4, neck: 38.1 });
+
+    await calculate(sessionId, {
+      method: 'navy',
+      variant: 'male',
+      height: { value: 178, unit: 'cm' },
+    });
+    await calculate(sessionId, {
+      method: 'ymca',
+      variant: 'male',
+      weight: { value: 75, unit: 'kg' },
+    });
+
+    const listed = (await (
+      await app.request(`/api/composition/sessions/${sessionId}/body-fat`, {
+        headers: { authorization: `Bearer ${token}` },
+      })
+    ).json()) as { estimates: { method: string }[] };
+
+    // An athlete comparing the two must not lose whichever ran second.
+    expect(listed.estimates.map((estimate) => estimate.method).sort()).toEqual(['navy', 'ymca']);
+  });
+
+  it('replaces rather than duplicating when the same equation runs again', async () => {
+    const sessionId = await seeded({ waist: 86.4, neck: 38.1 });
+
+    await calculate(sessionId, {
+      method: 'navy',
+      variant: 'male',
+      height: { value: 178, unit: 'cm' },
+    });
+    await calculate(sessionId, {
+      method: 'navy',
+      variant: 'male',
+      height: { value: 180, unit: 'cm' },
+    });
+
+    const listed = (await (
+      await app.request(`/api/composition/sessions/${sessionId}/body-fat`, {
+        headers: { authorization: `Bearer ${token}` },
+      })
+    ).json()) as { estimates: unknown[] };
+
+    expect(listed.estimates).toHaveLength(1);
+  });
+
+  it('never labels a formula result better than moderate', async () => {
+    const sessionId = await seeded({ waist: 86.4, neck: 38.1 });
+
+    const body = (await (
+      await calculate(sessionId, {
+        method: 'navy',
+        variant: 'male',
+        height: { value: 178, unit: 'cm' },
+      })
+    ).json()) as { confidence: string };
+
+    // A complete set of inputs makes the estimate usable, not certain.
+    expect(body.confidence).toBe('moderate');
+  });
+
+  it('will not compute from circumferences the client supplies', async () => {
+    const sessionId = await seeded({ waist: 86.4, neck: 38.1 });
+
+    const response = await calculate(sessionId, {
+      method: 'navy',
+      variant: 'male',
+      height: { value: 178, unit: 'cm' },
+      // Ignored: the session's own record is the only source.
+      waistCm: 70,
+    });
+
+    const body = (await response.json()) as { steps: { value: number }[] };
+    expect(body.steps[0]?.value).toBeCloseTo(86.4 - 38.1, 1);
+  });
+
+  it('says which measurement to check when it cannot finish', async () => {
+    // A neck larger than the waist takes log10 of a negative number.
+    const sessionId = await seeded({ waist: 38, neck: 40 });
+
+    const response = await calculate(sessionId, {
+      method: 'navy',
+      variant: 'male',
+      height: { value: 178, unit: 'cm' },
+    });
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as {
+      error: { message: string; details?: { steps?: unknown[] } };
+    };
+
+    expect(body.error.message).toContain('girth');
+    // The steps travel with the refusal so the athlete sees where it stopped.
+    expect(body.error.details?.steps).toHaveLength(1);
+  });
+
+  it('refuses a session with no waist at all', async () => {
+    const sessionId = await seeded({ chest: 99.2 });
+
+    const response = await calculate(sessionId, {
+      method: 'navy',
+      variant: 'male',
+      height: { value: 178, unit: 'cm' },
+    });
+
+    expect(response.status).toBe(400);
+    expect(((await response.json()) as { error: { message: string } }).error.message).toContain(
+      'waist',
+    );
+  });
+
+  it('reports another athlete session as not found', async () => {
+    const sessionId = await seeded({ waist: 86.4, neck: 38.1 });
+
+    const signUp = await app.request('/api/auth/signup', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: 'fat-intruder@example.test',
+        password: 'a-long-enough-password',
+        displayName: 'Intruder',
+      }),
+    });
+    const intruder = ((await signUp.json()) as { token: string }).token;
+
+    const response = await calculate(
+      sessionId,
+      { method: 'navy', variant: 'male', height: { value: 178, unit: 'cm' } },
+      intruder,
+    );
+    expect(response.status).toBe(404);
+  });
+
+  it('requires a signed-in athlete', async () => {
+    const sessionId = await seeded({ waist: 86.4, neck: 38.1 });
+
+    const response = await app.request(`/api/composition/sessions/${sessionId}/body-fat`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ method: 'navy', variant: 'male' }),
+    });
+    expect(response.status).toBe(401);
+  });
+});

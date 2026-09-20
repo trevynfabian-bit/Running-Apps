@@ -19,8 +19,10 @@ import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import {
   PHOTO_SIDES,
   createCompositionSessionSchema,
+  calculateBodyFatSchema,
   recordMeasurementSchema,
   recordMeasurementsSchema,
+  type BodyFatEstimateDto,
   type MetricHistoryDto,
   type CompositionMeasurementDto,
   type CompositionPhotoDto,
@@ -28,13 +30,21 @@ import {
   type LengthUnitDto,
   type PhotoSideDto,
 } from '@running/contracts';
-import { toCanonicalLength, withChanges, type LengthUnit } from '@running/core';
+import {
+  estimateBodyFat,
+  toCanonicalLength,
+  toCanonicalMass,
+  withChanges,
+  type LengthUnit,
+  type MassUnit,
+} from '@running/core';
 import { toLocalDate } from '@running/core';
 
 import { getDb } from '../db/client.js';
 import {
   athleteProfiles,
   bodyCompositionSessions,
+  bodyFatEstimates,
   circumferencePoints,
   compositionMeasurements,
   compositionPhotos,
@@ -678,4 +688,175 @@ compositionRoutes.delete('/sessions/:sessionId/measurements/:pointCode', async (
     deleted: removed.length > 0,
     measurements: await sessionMeasurements(db, sessionId),
   });
+});
+
+// ---------------------------------------------------------------------------
+// Body fat
+// ---------------------------------------------------------------------------
+
+/** Circumferences a session holds, keyed by measure point code. */
+async function sessionCircumferences(
+  db: Awaited<ReturnType<typeof getDb>>['db'],
+  sessionId: string,
+): Promise<Map<string, number>> {
+  const rows = await db
+    .select({ code: circumferencePoints.code, valueCm: compositionMeasurements.valueCm })
+    .from(compositionMeasurements)
+    .innerJoin(circumferencePoints, eq(compositionMeasurements.pointId, circumferencePoints.id))
+    .where(eq(compositionMeasurements.sessionId, sessionId));
+
+  return new Map(rows.map((row) => [row.code, row.valueCm]));
+}
+
+interface EstimateRow {
+  id: string;
+  sessionId: string;
+  method: string;
+  valueLow: number;
+  valueHigh: number;
+  confidenceLabel: string;
+  serviceStatus: string | null;
+  basis: string;
+  calculation: unknown;
+  createdAt: Date;
+}
+
+function toEstimateDto(row: EstimateRow): BodyFatEstimateDto {
+  const calculation = row.calculation as { steps?: BodyFatEstimateDto['steps'] } | null;
+
+  return {
+    id: row.id,
+    sessionId: row.sessionId,
+    method: row.method as BodyFatEstimateDto['method'],
+    valueLow: row.valueLow,
+    valueHigh: row.valueHigh,
+    confidence: row.confidenceLabel as BodyFatEstimateDto['confidence'],
+    ...(row.serviceStatus
+      ? { serviceStatus: row.serviceStatus as NonNullable<BodyFatEstimateDto['serviceStatus']> }
+      : {}),
+    basis: row.basis,
+    ...(calculation?.steps ? { steps: calculation.steps } : {}),
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+/**
+ * Run a circumference equation over a session and store the result.
+ *
+ * The circumferences are never sent by the client — they are already on the
+ * session, and accepting them on the wire would let a caller compute an
+ * estimate from numbers that are not in their own record.
+ *
+ * Height and weight arrive as the athlete entered them, with their unit, and
+ * are converted here. That keeps the conversion in one place and means a client
+ * that converts wrongly cannot write a corrupted canonical value.
+ *
+ * A failure to calculate is a 400 carrying the reason and the steps completed
+ * before it stopped. "Waist minus neck came out negative" tells the athlete
+ * which measurement to check; "could not calculate" tells them nothing.
+ */
+compositionRoutes.post('/sessions/:sessionId/body-fat', async (c) => {
+  const athleteId = c.get('athleteId');
+  const sessionId = c.req.param('sessionId');
+
+  const { db } = await getDb();
+  await ownedSession(db, athleteId, sessionId);
+
+  const parsed = calculateBodyFatSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) {
+    throw badRequest(parsed.error.issues[0]?.message ?? 'Those inputs were not valid.', {
+      issues: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`),
+    });
+  }
+
+  const circumferences = await sessionCircumferences(db, sessionId);
+  const waistCm = circumferences.get('waist');
+  if (waistCm === undefined) {
+    throw badRequest(
+      'This session has no waist measurement, and every circumference equation reads one.',
+    );
+  }
+
+  const heightCm = parsed.data.height
+    ? toCanonicalLength(parsed.data.height.value, parsed.data.height.unit as LengthUnit)
+    : undefined;
+  const weightKg = parsed.data.weight
+    ? toCanonicalMass(parsed.data.weight.value, parsed.data.weight.unit as MassUnit)
+    : undefined;
+
+  const result = estimateBodyFat(parsed.data.method, {
+    variant: parsed.data.variant,
+    waistCm,
+    ...(circumferences.has('neck') ? { neckCm: circumferences.get('neck')! } : {}),
+    ...(circumferences.has('hips') ? { hipsCm: circumferences.get('hips')! } : {}),
+    ...(heightCm !== undefined ? { heightCm } : {}),
+    ...(weightKg !== undefined ? { weightKg } : {}),
+  });
+
+  if (!result.ok) {
+    // The steps travel with the refusal so the athlete can see where it
+    // stopped rather than being told only that it did.
+    throw badRequest(result.reason, { steps: result.steps });
+  }
+
+  const basis =
+    parsed.data.method === 'navy'
+      ? "US Navy equation from this session's circumferences and the height given."
+      : "YMCA equation from this session's waist and the weight given.";
+
+  const [row] = await db
+    .insert(bodyFatEstimates)
+    .values({
+      sessionId,
+      method: parsed.data.method,
+      valueLow: result.valueLow,
+      valueHigh: result.valueHigh,
+      // Never higher than moderate. Nothing available here measures body fat;
+      // a complete set of inputs makes the estimate usable, not certain.
+      confidenceLabel: 'moderate',
+      basis,
+      calculation: {
+        variant: result.variant,
+        standardError: result.standardError,
+        steps: result.steps,
+      },
+    })
+    // Re-running on the same session replaces: the same inputs through the
+    // same equation give the same answer, so a second row is a duplicate.
+    .onConflictDoUpdate({
+      target: [bodyFatEstimates.sessionId, bodyFatEstimates.method],
+      set: {
+        valueLow: result.valueLow,
+        valueHigh: result.valueHigh,
+        confidenceLabel: 'moderate',
+        basis,
+        calculation: {
+          variant: result.variant,
+          standardError: result.standardError,
+          steps: result.steps,
+        },
+        updatedAt: new Date(),
+      },
+    })
+    .returning();
+
+  logger.info('composition.body_fat_estimated', { sessionId, method: parsed.data.method });
+  return c.json(toEstimateDto(row!), 201);
+});
+
+/** Every estimate stored for a session, both methods and the photo path. */
+compositionRoutes.get('/sessions/:sessionId/body-fat', async (c) => {
+  const athleteId = c.get('athleteId');
+  const sessionId = c.req.param('sessionId');
+
+  const { db } = await getDb();
+  await ownedSession(db, athleteId, sessionId);
+
+  const rows = await db
+    .select()
+    .from(bodyFatEstimates)
+    .where(eq(bodyFatEstimates.sessionId, sessionId))
+    .orderBy(asc(bodyFatEstimates.method));
+
+  return c.json({ estimates: rows.map(toEstimateDto) });
 });
