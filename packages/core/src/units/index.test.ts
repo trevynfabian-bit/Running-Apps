@@ -5,15 +5,22 @@ import {
   formatCanonicalLength,
   formatDistance,
   formatDuration,
+  formatCanonicalMass,
   formatLength,
+  formatMass,
   formatSignedLength,
   formatPace,
   fromCanonicalLength,
   paceToSpeed,
   parseDuration,
+  massUnitForLengthUnit,
   parseLength,
+  parseMass,
   speedToPace,
   toCanonicalLength,
+  convertMass,
+  fromCanonicalMass,
+  toCanonicalMass,
 } from './index.js';
 
 describe('pace and speed', () => {
@@ -181,5 +188,59 @@ describe('formatSignedLength', () => {
 
   it('shows a placeholder for a non-finite delta', () => {
     expect(formatSignedLength(Number.NaN, 'cm')).toBe('—');
+  });
+});
+
+describe('body mass', () => {
+  it('round-trips between kilograms and pounds', () => {
+    const kg = 72.4;
+    expect(convertMass(convertMass(kg, 'kg', 'lb'), 'lb', 'kg')).toBeCloseTo(kg, 10);
+  });
+
+  it('converts using the exact international pound', () => {
+    expect(convertMass(1, 'lb', 'kg')).toBe(0.45359237);
+    expect(convertMass(0.45359237, 'kg', 'lb')).toBeCloseTo(1, 10);
+  });
+
+  it('is a no-op when the units match', () => {
+    expect(convertMass(72.4, 'kg', 'kg')).toBe(72.4);
+    expect(convertMass(160, 'lb', 'lb')).toBe(160);
+  });
+
+  it('stores in kilograms whichever unit was typed', () => {
+    expect(toCanonicalMass(160, 'lb')).toBeCloseTo(72.5747792, 6);
+    expect(toCanonicalMass(72.4, 'kg')).toBe(72.4);
+    expect(fromCanonicalMass(72.5747792, 'lb')).toBeCloseTo(160, 6);
+  });
+
+  it('formats to one decimal in the requested unit', () => {
+    expect(formatMass(72.4, 'kg')).toBe('72.4 kg');
+    expect(formatMass(160, 'lb')).toBe('160.0 lb');
+    expect(formatCanonicalMass(72.5747792, 'lb')).toBe('160.0 lb');
+  });
+
+  it('shows a placeholder rather than a nonsense mass', () => {
+    expect(formatMass(Number.NaN, 'kg')).toBe('—');
+    expect(formatMass(-1, 'kg')).toBe('—');
+  });
+
+  it('parses a typed value with either decimal separator', () => {
+    expect(parseMass('72.4')).toBe(72.4);
+    expect(parseMass('72,4')).toBe(72.4);
+    expect(parseMass(' 160 ')).toBe(160);
+  });
+
+  it('rejects input that is not a weight', () => {
+    expect(parseMass('')).toBeUndefined();
+    expect(parseMass('0')).toBeUndefined();
+    expect(parseMass('-5')).toBeUndefined();
+    expect(parseMass('72kg')).toBeUndefined();
+  });
+
+  it('seeds the weight unit from the tape unit', () => {
+    // Someone measuring in inches almost certainly weighs in pounds; this is
+    // a starting point, not a lock.
+    expect(massUnitForLengthUnit('in')).toBe('lb');
+    expect(massUnitForLengthUnit('cm')).toBe('kg');
   });
 });

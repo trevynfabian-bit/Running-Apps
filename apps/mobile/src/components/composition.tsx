@@ -30,6 +30,14 @@ import {
   rangeWidth,
   type BodyFatEstimate,
 } from '../lib/body-fat';
+import {
+  FORMULA_VARIANTS,
+  VARIANT_DESCRIPTIONS,
+  VARIANT_LABELS,
+  VARIANT_NOTE,
+  type FormulaVariant,
+  type Requirement,
+} from '../lib/body-fat-inputs';
 import { summariseSession, type BodyCompositionSession } from '../lib/composition-session';
 import { UNIT_OPTIONS } from '../lib/measurement-units';
 import { radius, spacing } from '../design/tokens';
@@ -528,18 +536,20 @@ function CorrectionEditor({
 // ---------------------------------------------------------------------------
 
 /**
- * Segmented unit control.
+ * Two-or-more-option segmented control.
  *
- * A two-option segmented control rather than a switch: a switch has an implied
- * on/off, and neither centimetres nor inches is the "off" one.
+ * A segmented control rather than a switch: a switch has an implied on/off, and
+ * neither centimetres nor inches is the "off" one.
  */
-export function UnitToggle({
+export function SegmentedChoice({
   value,
+  options,
   onChange,
   accessibilityLabel,
 }: {
-  value: LengthUnit;
-  onChange: (unit: LengthUnit) => void;
+  value: string;
+  options: readonly { value: string; label: string; description: string }[];
+  onChange: (next: string) => void;
   accessibilityLabel: string;
 }): React.ReactElement {
   const theme = useTheme();
@@ -558,7 +568,7 @@ export function UnitToggle({
         borderColor: theme.color.border,
       }}
     >
-      {UNIT_OPTIONS.map((option) => {
+      {options.map((option) => {
         const selected = option.value === value;
         return (
           <Pressable
@@ -589,6 +599,26 @@ export function UnitToggle({
         );
       })}
     </View>
+  );
+}
+
+/** The length-unit flavour of `SegmentedChoice`, used by the entry screens. */
+export function UnitToggle({
+  value,
+  onChange,
+  accessibilityLabel,
+}: {
+  value: LengthUnit;
+  onChange: (unit: LengthUnit) => void;
+  accessibilityLabel: string;
+}): React.ReactElement {
+  return (
+    <SegmentedChoice
+      value={value}
+      options={UNIT_OPTIONS}
+      onChange={(next) => onChange(next as LengthUnit)}
+      accessibilityLabel={accessibilityLabel}
+    />
   );
 }
 
@@ -756,5 +786,175 @@ export function NonMedicalNotice({ compact = false }: { compact?: boolean }): Re
         {body}
       </Stack>
     </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Formula inputs
+// ---------------------------------------------------------------------------
+
+/**
+ * Pick which of the published equation's coefficient sets to apply.
+ *
+ * Framed as a choice between two equations, with what each one reads stated
+ * next to it, rather than as a question about the athlete. That is what the
+ * formula actually is, and it lets someone whose measurements do not sort
+ * neatly into the reference populations choose the equation that fits what they
+ * can measure.
+ */
+export function VariantPicker({
+  value,
+  onChange,
+}: {
+  value?: FormulaVariant;
+  onChange: (variant: FormulaVariant) => void;
+}): React.ReactElement {
+  return (
+    <Stack gap={spacing.md}>
+      <Stack direction="row" gap={spacing.sm} style={{ flexWrap: 'wrap' }}>
+        {FORMULA_VARIANTS.map((variant) => (
+          <Chip
+            key={variant}
+            label={VARIANT_LABELS[variant]}
+            selected={variant === value}
+            tone={variant === value ? 'accent' : 'neutral'}
+            onPress={() => onChange(variant)}
+          />
+        ))}
+      </Stack>
+      {value ? (
+        <Type variant="caption" tone="secondary">
+          {VARIANT_DESCRIPTIONS[value]}
+        </Type>
+      ) : null}
+      <Type variant="caption" tone="tertiary">
+        {VARIANT_NOTE}
+      </Type>
+    </Stack>
+  );
+}
+
+/**
+ * A labelled numeric field with the unit beside it.
+ *
+ * Shared by height and weight because they differ only in their unit and their
+ * bounds; two near-identical blocks in the screen would drift.
+ */
+export function QuantityField({
+  label,
+  value,
+  unit,
+  onChangeText,
+  onChangeUnit,
+  unitOptions,
+  hint,
+  error,
+}: {
+  label: string;
+  value: string;
+  unit: string;
+  onChangeText: (next: string) => void;
+  onChangeUnit: (next: string) => void;
+  unitOptions: readonly { value: string; label: string; description: string }[];
+  hint?: string;
+  error?: string;
+}): React.ReactElement {
+  const theme = useTheme();
+
+  return (
+    <Stack gap={spacing.sm}>
+      <Type variant="overline" tone="tertiary" accessibilityRole="header">
+        {label.toUpperCase()}
+      </Type>
+      <Stack direction="row" gap={spacing.sm} align="center">
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          keyboardType="decimal-pad"
+          inputMode="decimal"
+          placeholder="0.0"
+          placeholderTextColor={theme.color.textTertiary}
+          accessibilityLabel={`${label} in ${unit}`}
+          returnKeyType="done"
+          style={{
+            flex: 1,
+            minHeight: 48,
+            paddingHorizontal: spacing.md,
+            borderRadius: radius.md,
+            backgroundColor: theme.color.surface,
+            color: theme.color.text,
+            borderWidth: 1,
+            borderColor: error ? theme.color.negative : theme.color.border,
+            fontVariant: ['tabular-nums' as const],
+          }}
+        />
+        <View style={{ width: 108 }}>
+          <SegmentedChoice
+            value={unit}
+            options={unitOptions}
+            onChange={onChangeUnit}
+            accessibilityLabel={`Unit for ${label.toLowerCase()}`}
+          />
+        </View>
+      </Stack>
+      {error ? (
+        <Type variant="caption" tone="negative">
+          {error}
+        </Type>
+      ) : hint ? (
+        <Type variant="caption" tone="tertiary">
+          {hint}
+        </Type>
+      ) : null}
+    </Stack>
+  );
+}
+
+/**
+ * What the formula still needs.
+ *
+ * Every requirement is listed, met or not, so the athlete can see what the
+ * calculation rests on rather than only what is blocking it. A checklist that
+ * ticks over is also the clearest possible answer to "why is it asking me for
+ * my height?".
+ */
+export function RequirementList({
+  requirements,
+}: {
+  requirements: readonly Requirement[];
+}): React.ReactElement {
+  return (
+    <Stack gap={spacing.md}>
+      {requirements.map((requirement, index) => (
+        <React.Fragment key={requirement.key}>
+          {index > 0 ? <Divider /> : null}
+          <View
+            accessible
+            accessibilityLabel={`${requirement.label}, ${
+              requirement.satisfied ? 'ready' : 'still needed'
+            }. ${requirement.detail}`}
+          >
+            <Stack direction="row" justify="space-between" align="center" gap={spacing.md}>
+              <Stack gap={2} style={{ flexShrink: 1 }}>
+                <Type variant="bodyStrong" tone={requirement.satisfied ? 'default' : 'secondary'}>
+                  {requirement.label}
+                </Type>
+                <Type variant="caption" tone="tertiary">
+                  {requirement.detail}
+                </Type>
+              </Stack>
+              {/* A word, not only a tick: colour and glyph alone leave a
+                  screen reader with nothing and a colour-blind reader with
+                  two similar shapes. */}
+              <Chip
+                label={requirement.satisfied ? 'Ready' : 'Needed'}
+                tone={requirement.satisfied ? 'positive' : 'caution'}
+                selected
+              />
+            </Stack>
+          </View>
+        </React.Fragment>
+      ))}
+    </Stack>
   );
 }

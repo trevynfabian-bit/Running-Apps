@@ -44,10 +44,7 @@ export function paceToSpeed(secondsPerKm: number): number | undefined {
 }
 
 /** Average pace implied by a distance and a duration. */
-export function computePace(
-  distanceMeters: number,
-  durationSeconds: number,
-): number | undefined {
+export function computePace(distanceMeters: number, durationSeconds: number): number | undefined {
   if (distanceMeters <= 0 || durationSeconds <= 0) return undefined;
   return (durationSeconds / distanceMeters) * METERS_PER_KM;
 }
@@ -196,14 +193,14 @@ export const formatCanonicalLength = (valueCm: number, unit: LengthUnit): string
   formatLength(fromCanonicalLength(valueCm, unit), unit);
 
 /**
- * Parse a typed circumference.
+ * Parse a typed positive quantity.
  *
  * Accepts a comma decimal separator because a number pad on an Indonesian or
  * European locale produces one, and rejects anything else rather than letting
- * `Number()` quietly turn stray input into a plausible-looking value.
- * Zero and negatives are rejected: neither is a measurable circumference.
+ * `Number()` quietly turn stray input into a plausible-looking value. Zero and
+ * negatives are rejected: neither is a measurable body quantity.
  */
-export function parseLength(input: string): number | undefined {
+function parsePositiveDecimal(input: string): number | undefined {
   const trimmed = input.trim().replace(',', '.');
   if (!/^\d*\.?\d+$/.test(trimmed)) return undefined;
 
@@ -211,6 +208,9 @@ export function parseLength(input: string): number | undefined {
   if (!Number.isFinite(value) || value <= 0) return undefined;
   return value;
 }
+
+/** Parse a typed circumference. See `parsePositiveDecimal` for what is accepted. */
+export const parseLength = (input: string): number | undefined => parsePositiveDecimal(input);
 
 /**
  * Format a change in circumference, e.g. `−1.1 cm` or `+0.3 in`.
@@ -242,3 +242,66 @@ export function formatSignedLength(
   const sign = rounded < 0 ? '\u2212' : '+';
   return `${sign}${Math.abs(rounded).toFixed(1)} ${unit}`;
 }
+
+// ---------------------------------------------------------------------------
+// Body mass
+// ---------------------------------------------------------------------------
+
+/**
+ * Unit a body weight is entered and displayed in.
+ *
+ * Separate from every other unit preference in the app for the same reason the
+ * tape unit is: someone can want kilometres for their long run, inches round
+ * their waist, and pounds on the scale, and no two of those imply each other.
+ */
+export type MassUnit = 'kg' | 'lb';
+
+/** The international pound, exactly. */
+export const KG_PER_POUND = 0.45359237;
+
+/** Canonical storage unit for body mass, as stated at the top of this file. */
+export const CANONICAL_MASS_UNIT: MassUnit = 'kg';
+
+export const poundsToKg = (pounds: number): number => pounds * KG_PER_POUND;
+export const kgToPounds = (kg: number): number => kg / KG_PER_POUND;
+
+/** Convert a body mass between the two supported units. */
+export function convertMass(value: number, from: MassUnit, to: MassUnit): number {
+  if (from === to) return value;
+  return from === 'kg' ? kgToPounds(value) : poundsToKg(value);
+}
+
+/** Convert a value as entered into the canonical kilogram representation. */
+export const toCanonicalMass = (value: number, unit: MassUnit): number =>
+  convertMass(value, unit, CANONICAL_MASS_UNIT);
+
+/** Convert a stored kilogram value into the unit the athlete reads in. */
+export const fromCanonicalMass = (valueKg: number, unit: MassUnit): number =>
+  convertMass(valueKg, CANONICAL_MASS_UNIT, unit);
+
+/**
+ * Format a body mass for display.
+ *
+ * One decimal in both units. Bathroom scales do not resolve finer, and a second
+ * decimal invites reading day-to-day water movement as a change.
+ */
+export function formatMass(value: number, unit: MassUnit = CANONICAL_MASS_UNIT): string {
+  if (!Number.isFinite(value) || value < 0) return '—';
+  return `${value.toFixed(1)} ${unit}`;
+}
+
+/** Format a stored kilogram value in the athlete's preferred unit. */
+export const formatCanonicalMass = (valueKg: number, unit: MassUnit): string =>
+  formatMass(fromCanonicalMass(valueKg, unit), unit);
+
+/** Parse a typed body mass. See `parsePositiveDecimal` for what is accepted. */
+export const parseMass = (input: string): number | undefined => parsePositiveDecimal(input);
+
+/**
+ * The mass unit that goes with a tape unit.
+ *
+ * Someone measuring in inches is overwhelmingly likely to weigh in pounds, so
+ * this seeds the default rather than asking a second time. It is a starting
+ * point, never a lock — the two preferences stay independently settable.
+ */
+export const massUnitForLengthUnit = (unit: LengthUnit): MassUnit => (unit === 'in' ? 'lb' : 'kg');
