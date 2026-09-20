@@ -1233,6 +1233,79 @@ export const trendSeriesSchema = z.object({
 });
 export type TrendSeriesDto = z.infer<typeof trendSeriesSchema>;
 
+// ---------------------------------------------------------------------------
+// Composition privacy
+// ---------------------------------------------------------------------------
+
+/**
+ * What one session holds, for the screen that asks "what have you got of mine".
+ *
+ * Counts rather than contents, and `onServer` so an athlete can tell which
+ * sessions include photographs — that is the distinction they care about, and
+ * "some of your data is stored" is not an answer.
+ */
+export const sessionInventorySchema = z.object({
+  sessionId: z.string(),
+  capturedAt: isoDateTime,
+  localDate: localDate,
+  photoCount: z.number().int().nonnegative(),
+  measurementCount: z.number().int().nonnegative(),
+  estimateCount: z.number().int().nonnegative(),
+  /** True when this session has photos, which are held server-side. */
+  onServer: z.boolean(),
+});
+export type SessionInventoryDto = z.infer<typeof sessionInventorySchema>;
+
+export const compositionInventorySchema = z.object({
+  sessions: z.array(sessionInventorySchema),
+  totals: z.object({
+    sessionCount: z.number().int().nonnegative(),
+    photoCount: z.number().int().nonnegative(),
+    measurementCount: z.number().int().nonnegative(),
+    estimateCount: z.number().int().nonnegative(),
+    /** Total bytes of stored photos, so "how much" has a real answer. */
+    photoBytes: z.number().int().nonnegative(),
+  }),
+});
+export type CompositionInventoryDto = z.infer<typeof compositionInventorySchema>;
+
+/**
+ * What a deletion actually removed.
+ *
+ * Returned rather than a bare success, because on a deletion endpoint the
+ * athlete is trusting a claim they cannot verify. Counts they can check against
+ * the inventory they were just shown are the nearest thing to proof this API
+ * can offer.
+ */
+export const deletionReceiptSchema = z.object({
+  sessionsDeleted: z.number().int().nonnegative(),
+  photosDeleted: z.number().int().nonnegative(),
+  measurementsDeleted: z.number().int().nonnegative(),
+  estimatesDeleted: z.number().int().nonnegative(),
+  /** Photo files removed from storage, counted separately from their rows. */
+  filesDeleted: z.number().int().nonnegative(),
+  /**
+   * Files the database expected and storage did not have.
+   *
+   * Reported rather than swallowed: it means a previous delete was interrupted
+   * or something went wrong, and hiding it would let the discrepancy grow
+   * unseen.
+   */
+  filesMissing: z.number().int().nonnegative(),
+});
+export type DeletionReceiptDto = z.infer<typeof deletionReceiptSchema>;
+
+/**
+ * Confirmation required before deleting everything.
+ *
+ * A destructive endpoint with no undo should not be reachable by a mistyped
+ * URL or a stray retry, so the caller has to state what they intend.
+ */
+export const purgeCompositionSchema = z.object({
+  confirm: z.literal('delete my composition data'),
+});
+export type PurgeCompositionDto = z.infer<typeof purgeCompositionSchema>;
+
 /**
  * Uniform error envelope. `code` is stable and machine-readable; `message` is
  * athlete-facing and must never contain a stack trace or provider internals.

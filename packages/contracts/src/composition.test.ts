@@ -14,7 +14,10 @@ import {
   compareSessionsQuerySchema,
   comparisonRowSchema,
   comparisonSummarySchema,
+  compositionInventorySchema,
+  deletionReceiptSchema,
   photoPairSchema,
+  purgeCompositionSchema,
   compositionSessionSchema,
   lengthUnitSchema,
   metricHistoryEntrySchema,
@@ -284,5 +287,85 @@ describe('compareSessionsQuerySchema', () => {
     expect(compareSessionsQuerySchema.safeParse({ days: '0' }).success).toBe(false);
     expect(compareSessionsQuerySchema.safeParse({ days: '-7' }).success).toBe(false);
     expect(compareSessionsQuerySchema.safeParse({ days: 'soon' }).success).toBe(false);
+  });
+});
+
+describe('compositionInventorySchema', () => {
+  it('describes what is stored in counts, not contents', () => {
+    const parsed = compositionInventorySchema.parse({
+      sessions: [
+        {
+          sessionId: 's-1',
+          capturedAt: '2026-09-06T07:45:00.000Z',
+          localDate: '2026-09-06',
+          photoCount: 4,
+          measurementCount: 6,
+          estimateCount: 1,
+          onServer: true,
+        },
+      ],
+      totals: {
+        sessionCount: 1,
+        photoCount: 4,
+        measurementCount: 6,
+        estimateCount: 1,
+        photoBytes: 2_400_000,
+      },
+    });
+
+    // "Some of your data is stored" is not an answer; these are.
+    expect(parsed.sessions[0]?.onServer).toBe(true);
+    expect(parsed.totals.photoBytes).toBe(2_400_000);
+    expect(parsed.sessions[0]).not.toHaveProperty('photos');
+  });
+});
+
+describe('deletionReceiptSchema', () => {
+  it('counts what went, rather than reporting a bare success', () => {
+    const parsed = deletionReceiptSchema.parse({
+      sessionsDeleted: 1,
+      photosDeleted: 4,
+      measurementsDeleted: 6,
+      estimatesDeleted: 1,
+      filesDeleted: 4,
+      filesMissing: 0,
+    });
+
+    // The nearest thing to proof this API can offer for a claim the athlete
+    // cannot verify.
+    expect(parsed.photosDeleted).toBe(4);
+    expect(parsed.filesDeleted).toBe(4);
+  });
+
+  it('has a place to report files the database expected and storage lacked', () => {
+    const parsed = deletionReceiptSchema.parse({
+      sessionsDeleted: 1,
+      photosDeleted: 4,
+      measurementsDeleted: 0,
+      estimatesDeleted: 0,
+      filesDeleted: 3,
+      filesMissing: 1,
+    });
+
+    // Swallowing it would let the discrepancy grow unseen.
+    expect(parsed.filesMissing).toBe(1);
+    expect(parsed.filesDeleted).toBeLessThan(parsed.photosDeleted);
+  });
+});
+
+describe('purgeCompositionSchema', () => {
+  it('requires the caller to state what they intend', () => {
+    expect(
+      purgeCompositionSchema.safeParse({ confirm: 'delete my composition data' }).success,
+    ).toBe(true);
+  });
+
+  it('refuses anything else, including a plausible near-miss', () => {
+    // A destructive endpoint with no undo should not be reachable by a
+    // mistyped URL or a stray retry.
+    for (const confirm of ['yes', 'true', 'delete', 'Delete my composition data', '']) {
+      expect(purgeCompositionSchema.safeParse({ confirm }).success).toBe(false);
+    }
+    expect(purgeCompositionSchema.safeParse({}).success).toBe(false);
   });
 });
