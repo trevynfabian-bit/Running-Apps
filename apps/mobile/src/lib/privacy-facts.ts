@@ -67,7 +67,7 @@ export const STORAGE_FACTS: readonly PrivacyFact[] = [
   {
     title: 'Deleting your account deletes everything',
     detail:
-      'Composition data hangs off your athlete profile in the database, so removing the account removes every session, photo and measurement with it in one operation rather than relying on a cleanup job.',
+      'Your image files are removed from our disk first, then the account row goes and takes every session, measurement and estimate with it. That order matters: the database holds only the file names, so once the account is gone nothing could say which images were yours. We ask for your password as well as your sign-in, because this is the one thing here that cannot be undone.',
     location: 'both',
   },
 ];

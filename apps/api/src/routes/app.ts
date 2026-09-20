@@ -4,7 +4,7 @@
  */
 
 import { Hono } from 'hono';
-import { and, desc, eq, gte, lte } from 'drizzle-orm';
+import { and, count, desc, eq, gte, lte } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
 import {
@@ -13,7 +13,9 @@ import {
   createRaceGoalSchema,
   generatePlanSchema,
   coachMessageSchema,
+  deleteAccountSchema,
   updateAthleteProfileSchema,
+  API_ERROR_CODES,
 } from '@running/contracts';
 import {
   addDaysToLocalDate,
@@ -50,12 +52,19 @@ import {
   trainingPlans,
   workoutSources,
   athleteProfiles,
+  auditLogs,
+  bodyCompositionSessions,
+  compositionPhotos,
+  users,
   whoopSleep,
   whoopRecoveries,
   bodyMeasurements,
 } from '../db/schema.js';
 import type { AuthVariables } from '../security/auth.js';
-import { badRequest, notFound } from '../errors.js';
+import { ApiError, badRequest, notFound } from '../errors.js';
+import { logger } from '../observability/logger.js';
+import { verifyPassword } from '../security/crypto.js';
+import { photoStorage } from '../services/photo-storage.js';
 import {
   computeWeeklyDistances,
   currentWeekSummary,
@@ -147,6 +156,95 @@ appRoutes.patch('/me', async (c) => {
     .where(eq(athleteProfiles.id, c.get('athleteId')));
 
   return c.json({ ok: true });
+});
+
+/**
+ * Delete the account and everything in it.
+ *
+ * Rows go by cascade: every table that belongs to an athlete references the
+ * profile with `onDelete: 'cascade'`, so one statement empties the lot and
+ * nothing depends on cleanup code remembering a table.
+ *
+ * The photographs do not. They are files on a disk, and the database knows
+ * only their keys — so deleting the user row first would take away the only
+ * record of which files were this athlete's and leave the images themselves
+ * behind, permanently, with no way for anyone to find them again. That is the
+ * failure this endpoint exists to prevent, so the files go first and the row
+ * goes second. A failure in between leaves an account whose photos 404, which
+ * the athlete can act on by pressing delete again.
+ *
+ * The password is required even though the request carries a valid token: a
+ * token can be copied off a device, and being able to read someone's training
+ * should not be the same as being able to erase it.
+ */
+appRoutes.delete('/me', async (c) => {
+  const parsed = deleteAccountSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) {
+    throw badRequest('Enter your password and type DELETE to confirm.', {
+      issues: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`),
+    });
+  }
+
+  const athleteId = c.get('athleteId');
+  const userId = c.get('userId');
+
+  const { db } = await getDb();
+
+  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!user || !verifyPassword(parsed.data.password, user.passwordHash)) {
+    throw new ApiError(401, API_ERROR_CODES.UNAUTHORIZED, 'That password is not correct.');
+  }
+
+  // Counted before anything goes, because afterwards there is nothing left to
+  // count. This is the only report the athlete will ever get of what was held.
+  const [sessionCount] = await db
+    .select({ value: count() })
+    .from(bodyCompositionSessions)
+    .where(eq(bodyCompositionSessions.athleteId, athleteId));
+
+  const [photoCount] = await db
+    .select({ value: count() })
+    .from(compositionPhotos)
+    .innerJoin(
+      bodyCompositionSessions,
+      eq(compositionPhotos.sessionId, bodyCompositionSessions.id),
+    )
+    .where(eq(bodyCompositionSessions.athleteId, athleteId));
+
+  // Not caught. If the photographs cannot be removed the account stays whole
+  // and the athlete gets an error they can retry, rather than a confirmation
+  // of a deletion that left their body photos on our disk.
+  const filesRemoved = await photoStorage().removeAthlete(athleteId);
+
+  const [deleted] = await db.delete(users).where(eq(users.id, userId)).returning();
+  if (!deleted) throw notFound('Account');
+
+  // Written after the fact and deliberately outlives the account: `audit_logs`
+  // holds ids, not a foreign key, so this row is not swept up by the cascade.
+  // It records that a deletion happened and how much went — never a
+  // measurement, a photo key, or anything about the body it described.
+  await db.insert(auditLogs).values({
+    userId,
+    athleteId,
+    action: 'account.deleted',
+    resource: 'user',
+    metadata: {
+      compositionSessions: sessionCount?.value ?? 0,
+      compositionPhotos: photoCount?.value ?? 0,
+      photoFilesRemoved: filesRemoved,
+    },
+  });
+
+  logger.info('account.deleted', { userId, filesRemoved });
+
+  return c.json({
+    ok: true,
+    deleted: {
+      compositionSessions: sessionCount?.value ?? 0,
+      compositionPhotos: photoCount?.value ?? 0,
+      photoFilesRemoved: filesRemoved,
+    },
+  });
 });
 
 appRoutes.post('/me/complete-onboarding', async (c) => {

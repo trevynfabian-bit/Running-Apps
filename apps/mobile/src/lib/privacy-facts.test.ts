@@ -48,10 +48,13 @@ describe('storage facts', () => {
   it('names the mechanism behind account deletion, not just the promise', () => {
     const account = STORAGE_FACTS.find((fact) => fact.title.includes('account'));
 
-    // "Hangs off your athlete profile" is checkable against the schema's
-    // cascade; "everything is deleted" is checkable against nothing.
-    expect(account?.detail).toContain('profile');
-    expect(account?.detail).toContain('cleanup job');
+    // Each of these is checkable against `DELETE /api/me`: the image files go
+    // before the row, the row takes the rest with it, and the password is
+    // required on top of the token. "Everything is deleted" is checkable
+    // against nothing.
+    expect(account?.detail).toContain('image files');
+    expect(account?.detail).toContain('first');
+    expect(account?.detail).toContain('password');
   });
 
   it('gives every fact a title and a detail worth reading', () => {

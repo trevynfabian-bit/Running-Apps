@@ -738,6 +738,25 @@ export const signInSchema = z.object({
 });
 export type SignInDto = z.infer<typeof signInSchema>;
 
+/**
+ * Deleting an account.
+ *
+ * The password is required even though the request already carries a valid
+ * token. A bearer token is a thing that can be copied off a device; it should
+ * be enough to read an athlete's training and not enough to erase their
+ * history, and the one action here that cannot be undone is the one worth
+ * asking twice about.
+ *
+ * `confirm` is the athlete's own word for what they are doing. It exists so a
+ * client cannot delete an account by replaying a sign-in body, which would
+ * otherwise validate against a password-only schema.
+ */
+export const deleteAccountSchema = z.object({
+  password: z.string().min(1),
+  confirm: z.literal('DELETE'),
+});
+export type DeleteAccountDto = z.infer<typeof deleteAccountSchema>;
+
 export const authResponseSchema = z.object({
   token: z.string(),
   expiresAt: isoDateTime,
