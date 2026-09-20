@@ -105,6 +105,22 @@ describe('body composition session', () => {
     expect(measurementForPoint(session, 'point-chest')?.id).toBe('m-2');
   });
 
+  it('reports empty once its last measurement is removed', () => {
+    const session = addMeasurement(createSession('session-1', STARTED_AT), measurement());
+
+    // The store keys off this to put the active session back to not-started
+    // rather than leaving an empty one in the history.
+    expect(isSessionEmpty(removeMeasurement(session, 'point-waist'))).toBe(true);
+  });
+
+  it('stays non-empty while any other point is still measured', () => {
+    let session = createSession('session-1', STARTED_AT);
+    session = addMeasurement(session, measurement({ id: 'm-1', pointId: 'point-waist' }));
+    session = addMeasurement(session, measurement({ id: 'm-2', pointId: 'point-chest' }));
+
+    expect(isSessionEmpty(removeMeasurement(session, 'point-waist'))).toBe(false);
+  });
+
   it('treats removing an unmeasured point as a no-op', () => {
     const session = addMeasurement(createSession('session-1', STARTED_AT), measurement());
     expect(removeMeasurement(session, 'point-thigh')).toBe(session);

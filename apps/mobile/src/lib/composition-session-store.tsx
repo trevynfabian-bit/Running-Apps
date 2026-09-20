@@ -30,6 +30,7 @@ import {
   addMeasurement,
   amendMeasurement,
   createSession,
+  isSessionEmpty,
   measurementForPoint,
   removeMeasurement,
   type BodyCompositionSession,
@@ -55,6 +56,8 @@ interface CompositionSessionsValue {
   record: (measurement: Omit<BodyMeasurement, 'id'>) => void;
   /** Correct a value in any session — the active one or a filed one. */
   amend: (sessionId: string, pointId: string, correction: MeasurementCorrection) => void;
+  /** Delete a value from any session — the active one or a filed one. */
+  remove: (sessionId: string, pointId: string) => void;
   /** Drop a point's measurement from the active session. */
   discard: (pointId: string) => void;
   /** Clear the active session — used when it has been filed or abandoned. */
@@ -121,6 +124,34 @@ export function CompositionSessionsProvider({
     [],
   );
 
+  const remove = useCallback((sessionId: string, pointId: string) => {
+    setActive((current) => {
+      if (!current || current.id !== sessionId) return current;
+
+      const trimmed = removeMeasurement(current, pointId);
+      // Deleting the only measurement puts the session back to not-started.
+      // Sessions begin lazily to avoid empty ones in the history; an emptied
+      // one should not survive by having existed briefly.
+      return isSessionEmpty(trimmed) ? undefined : trimmed;
+    });
+
+    setHistory((current) => {
+      const index = current.findIndex((session) => session.id === sessionId);
+      if (index === -1) return current;
+
+      const trimmed = removeMeasurement(current[index]!, pointId);
+      // Nothing to delete: same array, so React skips the render.
+      if (trimmed === current[index]) return current;
+
+      // A filed session that loses its last circumference is kept. It may
+      // still hold photos, and discarding a whole session is a separate,
+      // explicit action — not a side effect of deleting one number.
+      const next = [...current];
+      next[index] = trimmed;
+      return next;
+    });
+  }, []);
+
   const discard = useCallback((pointId: string) => {
     setActive((current) => (current ? removeMeasurement(current, pointId) : current));
   }, []);
@@ -135,8 +166,8 @@ export function CompositionSessionsProvider({
   const all = useMemo(() => (active ? [active, ...history] : history), [active, history]);
 
   const value = useMemo(
-    () => ({ active, history, all, record, amend, discard, reset, recorded }),
-    [active, history, all, record, amend, discard, reset, recorded],
+    () => ({ active, history, all, record, amend, remove, discard, reset, recorded }),
+    [active, history, all, record, amend, remove, discard, reset, recorded],
   );
 
   return (

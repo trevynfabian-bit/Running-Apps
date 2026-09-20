@@ -71,7 +71,14 @@ export default function MeasurementsScreen(): React.ReactElement {
   const theme = useTheme();
   const { defaultUnit, ready, setDefaultUnit } = useMeasurementUnit();
 
-  const { active: session, all: sessions, record, amend, recorded } = useCompositionSessions();
+  const {
+    active: session,
+    all: sessions,
+    record,
+    amend,
+    remove,
+    recorded,
+  } = useCompositionSessions();
 
   const [pointId, setPointId] = useState(STUB_CIRCUMFERENCE_POINTS[0]!.id);
   const [drafts, setDrafts] = useState<DraftsByPoint>({});
@@ -340,6 +347,7 @@ export default function MeasurementsScreen(): React.ReactElement {
             entries={history}
             displayUnit={defaultUnit}
             onCorrect={(sessionId, correction) => amend(sessionId, pointId, correction)}
+            onDelete={(sessionId) => remove(sessionId, pointId)}
           />
         </View>
       </Stack>

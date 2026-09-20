@@ -8,7 +8,7 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import {
   formatCanonicalLength,
@@ -217,22 +217,25 @@ function SummaryRow({
  * athlete was training for — so the arrow says which way, the colour stays
  * neutral, and the athlete supplies the meaning.
  *
- * Any row can be corrected in place. A number typed wrong three months ago is
- * still wrong, and it is dragging every delta computed from it along with it —
- * so the fix belongs here, on the row showing the bad value, rather than behind
- * a separate screen the athlete has to go find.
+ * Any row can be corrected or deleted in place. A number typed wrong three
+ * months ago is still wrong, and it is dragging every delta computed from it
+ * along with it — so the fix belongs here, on the row showing the bad value,
+ * rather than behind a separate screen the athlete has to go find.
  */
 export function MetricHistoryCard({
   pointLabel,
   entries,
   displayUnit,
   onCorrect,
+  onDelete,
 }: {
   pointLabel: string;
   entries: readonly MetricHistoryEntry[];
   displayUnit: LengthUnit;
   /** Save a corrected value for one session's entry. */
   onCorrect: (sessionId: string, correction: { valueCm: number; recordedUnit: LengthUnit }) => void;
+  /** Delete one session's value for this point. */
+  onDelete: (sessionId: string) => void;
 }): React.ReactElement {
   if (entries.length === 0) {
     return (
@@ -253,7 +256,9 @@ export function MetricHistoryCard({
               entry={entry}
               displayUnit={displayUnit}
               isLatest={index === 0}
+              pointLabel={pointLabel}
               onCorrect={(correction) => onCorrect(entry.sessionId, correction)}
+              onDelete={() => onDelete(entry.sessionId)}
             />
           </React.Fragment>
         ))}
@@ -266,12 +271,16 @@ function HistoryRow({
   entry,
   displayUnit,
   isLatest,
+  pointLabel,
   onCorrect,
+  onDelete,
 }: {
   entry: MetricHistoryEntry;
   displayUnit: LengthUnit;
   isLatest: boolean;
+  pointLabel: string;
   onCorrect: (correction: { valueCm: number; recordedUnit: LengthUnit }) => void;
+  onDelete: () => void;
 }): React.ReactElement {
   const [editing, setEditing] = useState(false);
 
@@ -302,10 +311,16 @@ function HistoryRow({
       <CorrectionEditor
         entry={entry}
         when={when}
+        pointLabel={pointLabel}
+        displayUnit={displayUnit}
         onCancel={() => setEditing(false)}
         onSave={(correction) => {
           onCorrect(correction);
           setEditing(false);
+        }}
+        onDelete={() => {
+          setEditing(false);
+          onDelete();
         }}
       />
     );
@@ -370,13 +385,19 @@ function HistoryRow({
 function CorrectionEditor({
   entry,
   when,
+  pointLabel,
+  displayUnit,
   onSave,
   onCancel,
+  onDelete,
 }: {
   entry: MetricHistoryEntry;
   when: string;
+  pointLabel: string;
+  displayUnit: LengthUnit;
   onSave: (correction: { valueCm: number; recordedUnit: LengthUnit }) => void;
   onCancel: () => void;
+  onDelete: () => void;
 }): React.ReactElement {
   const theme = useTheme();
 
@@ -404,6 +425,23 @@ function CorrectionEditor({
     }
 
     onSave({ valueCm: toCanonicalLength(parsed, unit), recordedUnit: unit });
+  };
+
+  /**
+   * Deleting is destructive and there is no undo, so it asks first — and the
+   * question names the point, the date and the value, because the athlete is
+   * looking at a list of near-identical rows and the only thing that makes
+   * this one the right one is those three facts.
+   */
+  const confirmDelete = (): void => {
+    Alert.alert(
+      `Delete this ${pointLabel.toLowerCase()} measurement?`,
+      `The ${formatCanonicalLength(entry.valueCm, displayUnit)} recorded on ${when} will be removed from that session. Other measurements in it are kept.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: onDelete },
+      ],
+    );
   };
 
   return (
@@ -456,6 +494,22 @@ function CorrectionEditor({
         <Button label="Cancel" onPress={onCancel} variant="secondary" style={{ flex: 1 }} />
         <Button label="Save correction" onPress={save} style={{ flex: 2 }} />
       </Stack>
+
+      <Divider />
+
+      <Pressable
+        onPress={confirmDelete}
+        accessibilityRole="button"
+        // Says what disappears, not just "delete" — the confirm dialog is the
+        // last chance to notice this is the wrong row.
+        accessibilityLabel={`Delete the ${pointLabel} measurement from ${when}`}
+        hitSlop={8}
+        style={{ minHeight: 44, justifyContent: 'center', alignItems: 'center' }}
+      >
+        <Type variant="caption" tone="negative">
+          Delete this measurement
+        </Type>
+      </Pressable>
     </Stack>
   );
 }
