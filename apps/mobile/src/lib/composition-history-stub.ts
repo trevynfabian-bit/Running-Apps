@@ -105,3 +105,31 @@ export const STUB_SESSION_HISTORY: readonly BodyCompositionSession[] = [
     ],
   },
 ];
+
+/**
+ * Weight and body fat over the same block.
+ *
+ * Both already have real homes: weight in the progress endpoint's
+ * `body.weightKilograms`, body fat in the `body_fat_estimates` rows the API
+ * keeps per session. Neither is wired up yet, so these stand in — with the same
+ * shape those sources produce, so connecting them is a change of caller rather
+ * than a change of chart.
+ */
+export const STUB_WEIGHT_KG: readonly { capturedAt: string; value: number }[] = [
+  { capturedAt: '2026-06-14T07:30:00.000Z', value: 74.8 },
+  { capturedAt: '2026-07-12T07:15:00.000Z', value: 74.1 },
+  { capturedAt: '2026-08-09T08:00:00.000Z', value: 73.2 },
+  { capturedAt: '2026-09-06T07:45:00.000Z', value: 72.6 },
+];
+
+/** Band per session, never a single figure — the estimate has no such precision. */
+export const STUB_BODY_FAT_PERCENT: readonly {
+  capturedAt: string;
+  low: number;
+  high: number;
+}[] = [
+  { capturedAt: '2026-06-14T07:30:00.000Z', low: 17.1, high: 24.1 },
+  { capturedAt: '2026-07-12T07:15:00.000Z', low: 16.4, high: 23.4 },
+  { capturedAt: '2026-08-09T08:00:00.000Z', low: 15.8, high: 22.8 },
+  { capturedAt: '2026-09-06T07:45:00.000Z', low: 15.3, high: 22.3 },
+];

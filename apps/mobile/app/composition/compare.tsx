@@ -20,7 +20,6 @@ import { View } from 'react-native';
 
 import { formatCanonicalLength, formatSignedLength } from '@running/core';
 
-import { STUB_SESSION_HISTORY } from '../../src/lib/composition-history-stub';
 import { useCompositionSessions } from '../../src/lib/composition-session-store';
 import { useMeasurementUnit } from '../../src/lib/measurement-units';
 import {
@@ -48,6 +47,14 @@ import {
   Type,
 } from '../../src/components/primitives';
 import { PhotoComparison } from '../../src/components/composition';
+import { TrendChart } from '../../src/components/trend-chart';
+import { buildTrendSeries, type TrendMetric } from '../../src/lib/composition-trends';
+import {
+  STUB_BODY_FAT_PERCENT,
+  STUB_SESSION_HISTORY,
+  STUB_WEIGHT_KG,
+} from '../../src/lib/composition-history-stub';
+import { STUB_CIRCUMFERENCE_POINTS } from '../../src/lib/body-composition';
 
 function sessionLabel(session: BodyCompositionSession): string {
   return new Date(session.capturedAt).toLocaleDateString(undefined, {
@@ -76,6 +83,10 @@ export default function CompareScreen(): React.ReactElement {
    */
   const [mode, setMode] = useState<'sessions' | 'range'>('sessions');
   const [rangeKey, setRangeKey] = useState<string>('all');
+  const [metric, setMetric] = useState<TrendMetric>({
+    kind: 'circumference',
+    pointId: STUB_CIRCUMFERENCE_POINTS.find((point) => point.code === 'waist')!.id,
+  });
 
   const [slots, setSlots] = useState(() => ({
     earlierId: sessions[sessions.length - 1]?.id ?? '',
@@ -109,6 +120,24 @@ export default function CompareScreen(): React.ReactElement {
   const comparison = pair ? compareSessions(pair.earlier, pair.later) : undefined;
   const comparable = comparison ? comparableRows(comparison) : [];
   const photoPairs = comparePhotos(comparison?.earlier, comparison?.later);
+
+  /**
+   * The chart always spans the chosen window, even in two-session mode.
+   *
+   * A trend read from exactly two points is a straight line by construction and
+   * says nothing about the shape of the change between them. The pair above
+   * answers "what changed"; this answers "how did it get there".
+   */
+  const series = buildTrendSeries(
+    {
+      sessions,
+      weightKg: STUB_WEIGHT_KG,
+      bodyFatPercent: STUB_BODY_FAT_PERCENT,
+      points: STUB_CIRCUMFERENCE_POINTS,
+    },
+    metric,
+    preset.days,
+  );
   const total = comparison ? totalChangeCm(comparison) : undefined;
 
   return (
@@ -186,6 +215,54 @@ export default function CompareScreen(): React.ReactElement {
                     : `${comparison.daysApart} days apart, ${sessionLabel(comparison.earlier)} to ${sessionLabel(comparison.later)}.`}
                 </Type>
               ) : null}
+            </Stack>
+          </Card>
+        </View>
+
+        <View>
+          <SectionHeader title="Trend" />
+          <Card>
+            <Stack gap={spacing.lg}>
+              {/* One metric at a time: centimetres, kilograms and percent
+                  never share an axis. */}
+              <Stack direction="row" gap={spacing.sm} style={{ flexWrap: 'wrap' }}>
+                {STUB_CIRCUMFERENCE_POINTS.map((point) => (
+                  <Chip
+                    key={point.id}
+                    label={point.label}
+                    selected={metric.kind === 'circumference' && metric.pointId === point.id}
+                    tone={
+                      metric.kind === 'circumference' && metric.pointId === point.id
+                        ? 'accent'
+                        : 'neutral'
+                    }
+                    onPress={() => setMetric({ kind: 'circumference', pointId: point.id })}
+                  />
+                ))}
+                <Chip
+                  label="Weight"
+                  selected={metric.kind === 'weight'}
+                  tone={metric.kind === 'weight' ? 'accent' : 'neutral'}
+                  onPress={() => setMetric({ kind: 'weight' })}
+                />
+                <Chip
+                  label="Body fat"
+                  selected={metric.kind === 'bodyFat'}
+                  tone={metric.kind === 'bodyFat' ? 'accent' : 'neutral'}
+                  onPress={() => setMetric({ kind: 'bodyFat' })}
+                />
+              </Stack>
+
+              <Divider />
+
+              {series ? (
+                <TrendChart series={series} />
+              ) : (
+                <Type variant="body" tone="secondary">
+                  Nothing recorded for this metric in the chosen window. Try a longer range, or
+                  measure it in your next session.
+                </Type>
+              )}
             </Stack>
           </Card>
         </View>
