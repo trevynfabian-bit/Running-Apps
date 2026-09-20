@@ -106,6 +106,20 @@ export function clearPhotoEstimateCache(): void {
   cache.clear();
 }
 
+/**
+ * Forget the reading held for one session.
+ *
+ * Called when that session is deleted. A deletion that leaves a cached
+ * body-fat reading behind is not a deletion — the number derived from someone's
+ * photographs is as much about their body as the photographs were, and it would
+ * outlive the thing it was derived from.
+ *
+ * Returns whether there was one, so the confirmation can say so.
+ */
+export function clearPhotoEstimateFor(sessionId: string): boolean {
+  return cache.delete(sessionId);
+}
+
 /** A reading already held for this session, if any. */
 export function cachedPhotoEstimate(sessionId: string): BodyFatEstimate | undefined {
   return cache.get(sessionId);

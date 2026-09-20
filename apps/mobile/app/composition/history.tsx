@@ -22,6 +22,7 @@ import { useCompositionSessions } from '../../src/lib/composition-session-store'
 import { STUB_SESSION_HISTORY } from '../../src/lib/composition-history-stub';
 import {
   describeContents,
+  describeDeleted,
   describeDeletion,
   inventory,
   inventoryTotals,
@@ -50,6 +51,7 @@ function formatDate(iso: string): string {
 
 export default function CompositionHistoryScreen(): React.ReactElement {
   const { all, removeSession } = useCompositionSessions();
+  const [lastDeleted, setLastDeleted] = React.useState<string>();
   const entries = inventory(all.length > 0 ? all : STUB_SESSION_HISTORY);
   const totals = inventoryTotals(entries);
 
@@ -93,6 +95,19 @@ export default function CompositionHistoryScreen(): React.ReactElement {
           </Card>
         </View>
 
+        {lastDeleted ? (
+          <Card>
+            <Stack gap={spacing.xs}>
+              <Type variant="bodyStrong" tone="positive">
+                Session deleted
+              </Type>
+              <Type variant="body" tone="secondary">
+                {lastDeleted}
+              </Type>
+            </Stack>
+          </Card>
+        ) : null}
+
         <View>
           <SectionHeader title="Sessions" />
           <Card>
@@ -100,7 +115,15 @@ export default function CompositionHistoryScreen(): React.ReactElement {
               {entries.map((entry, index) => (
                 <React.Fragment key={entry.sessionId}>
                   {index > 0 ? <Divider /> : null}
-                  <SessionRow entry={entry} onDelete={() => removeSession(entry.sessionId)} />
+                  <SessionRow
+                    entry={entry}
+                    onDelete={() => {
+                      const receipt = removeSession(entry.sessionId);
+                      // Confirm in specifics, against the inventory they were
+                      // just looking at.
+                      setLastDeleted(receipt ? describeDeleted(receipt) : undefined);
+                    }}
+                  />
                 </React.Fragment>
               ))}
             </Stack>

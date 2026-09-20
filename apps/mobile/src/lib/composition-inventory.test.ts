@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import type { BodyCompositionSession } from './composition-session';
 import {
   describeContents,
+  describeDeleted,
   describeDeletion,
   inventory,
   inventorySession,
@@ -190,5 +191,43 @@ describe('describeDeletion', () => {
     // Including the sentence about the servers, which also has to agree.
     expect(text).not.toMatch(/\bphotos\b/);
     expect(text).not.toMatch(/\bmeasurements\b/);
+  });
+});
+
+describe('describeDeleted', () => {
+  it('confirms in specifics rather than saying "deleted"', () => {
+    const text = describeDeleted({
+      photoCount: 4,
+      measurementCount: 6,
+      estimateCleared: true,
+    });
+
+    // Checkable against the inventory the athlete was just looking at.
+    expect(text).toContain('4 photos');
+    expect(text).toContain('6 measurements');
+    expect(text).toContain('body fat estimate');
+  });
+
+  it('mentions the derived estimate only when there was one', () => {
+    const without = describeDeleted({
+      photoCount: 4,
+      measurementCount: 0,
+      estimateCleared: false,
+    });
+
+    expect(without).not.toContain('estimate');
+    expect(without).toBe('Deleted 4 photos.');
+  });
+
+  it('is singular where it should be', () => {
+    expect(describeDeleted({ photoCount: 1, measurementCount: 1, estimateCleared: false })).toBe(
+      'Deleted 1 photo and 1 measurement.',
+    );
+  });
+
+  it('says plainly when the session held nothing', () => {
+    expect(
+      describeDeleted({ photoCount: 0, measurementCount: 0, estimateCleared: false }),
+    ).toContain('held nothing');
   });
 });

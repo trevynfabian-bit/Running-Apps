@@ -137,3 +137,38 @@ export function describeDeletion(entry: SessionInventory): string {
 
   return `${parts.join(' and ')} from ${when} will be permanently deleted.${server} Your other sessions are not affected.`;
 }
+
+/**
+ * Confirm a deletion in specifics.
+ *
+ * "4 photos and 6 measurements deleted" is checkable against the inventory the
+ * athlete was just looking at. "Deleted" asks them to take our word for it on
+ * the one screen where that is hardest to give.
+ */
+export function describeDeleted(receipt: {
+  photoCount: number;
+  measurementCount: number;
+  estimateCleared: boolean;
+}): string {
+  const parts: string[] = [];
+  if (receipt.photoCount > 0) {
+    parts.push(`${receipt.photoCount} ${receipt.photoCount === 1 ? 'photo' : 'photos'}`);
+  }
+  if (receipt.measurementCount > 0) {
+    parts.push(
+      `${receipt.measurementCount} ${
+        receipt.measurementCount === 1 ? 'measurement' : 'measurements'
+      }`,
+    );
+  }
+  if (receipt.estimateCleared) parts.push('the body fat estimate made from them');
+
+  if (parts.length === 0) return 'That session is gone. It held nothing.';
+
+  const listed =
+    parts.length === 1
+      ? parts[0]!
+      : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]!}`;
+
+  return `Deleted ${listed}.`;
+}

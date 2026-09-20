@@ -12,6 +12,7 @@ import {
   PHOTO_MARGIN,
   cachedPhotoEstimate,
   clearPhotoEstimateCache,
+  clearPhotoEstimateFor,
   requestPhotoEstimate,
   simulatedPhotoBand,
   simulatedPhotoEstimate,
@@ -138,5 +139,23 @@ describe('the two methods together', () => {
     // photo band has to be wider than that, or the weaker signal would read
     // as the more precise one.
     expect(PHOTO_MARGIN).toBeGreaterThan(NAVY_STANDARD_ERROR);
+  });
+});
+
+describe('clearPhotoEstimateFor', () => {
+  it('drops one session reading and leaves the others', async () => {
+    await requestPhotoEstimate(SESSION, { latencyMs: 0 });
+    await requestPhotoEstimate(OTHER, { latencyMs: 0 });
+
+    expect(clearPhotoEstimateFor(SESSION)).toBe(true);
+
+    // A number derived from someone's photographs is as much about their body
+    // as the photographs were; it must not outlive them.
+    expect(cachedPhotoEstimate(SESSION)).toBeUndefined();
+    expect(cachedPhotoEstimate(OTHER)).toBeDefined();
+  });
+
+  it('reports whether there was anything to drop', () => {
+    expect(clearPhotoEstimateFor('never-read')).toBe(false);
   });
 });

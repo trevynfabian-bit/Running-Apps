@@ -36,10 +36,26 @@ import {
   type BodyCompositionSession,
 } from './composition-session';
 import { STUB_SESSION_HISTORY } from './composition-history-stub';
+import { clearPhotoEstimateFor } from './photo-estimate-stub';
 
 export interface MeasurementCorrection {
   valueCm: number;
   recordedUnit: LengthUnit;
+}
+
+/**
+ * What a session deletion actually removed.
+ *
+ * Returned rather than discarded so the screen can confirm in specifics. "4
+ * photos and 6 measurements deleted" is checkable; "Deleted" asks the athlete
+ * to take our word for it on the one screen where that is hardest to give.
+ */
+export interface DeletionReceipt {
+  sessionId: string;
+  photoCount: number;
+  measurementCount: number;
+  /** True when a body-fat reading derived from the photos was also dropped. */
+  estimateCleared: boolean;
 }
 
 interface CompositionSessionsValue {
@@ -70,7 +86,7 @@ interface CompositionSessionsValue {
    * behind after deleting its photos would be a partial deletion nobody asked
    * for.
    */
-  removeSession: (sessionId: string) => void;
+  removeSession: (sessionId: string) => DeletionReceipt | undefined;
   /** The value already recorded for a point in the active session, if any. */
   recorded: (pointId: string) => BodyMeasurement | undefined;
 }
@@ -167,14 +183,40 @@ export function CompositionSessionsProvider({
 
   const reset = useCallback(() => setActive(undefined), []);
 
-  const removeSession = useCallback((sessionId: string) => {
-    setActive((current) => (current?.id === sessionId ? undefined : current));
-    setHistory((current) => {
-      const next = current.filter((session) => session.id !== sessionId);
-      // Same array when nothing matched, so React skips the render.
-      return next.length === current.length ? current : next;
-    });
-  }, []);
+  /**
+   * Delete one session and everything derived from it.
+   *
+   * Photos, measurements, and the body-fat reading computed from those photos
+   * all go together. A number derived from someone's photographs is as much
+   * about their body as the photographs were, and leaving it cached would let
+   * it outlive the thing it came from.
+   */
+  const removeSession = useCallback(
+    (sessionId: string): DeletionReceipt | undefined => {
+      const found =
+        (active?.id === sessionId ? active : undefined) ??
+        history.find((session) => session.id === sessionId);
+
+      if (!found) return undefined;
+
+      const receipt: DeletionReceipt = {
+        sessionId,
+        photoCount: found.photos?.length ?? 0,
+        measurementCount: found.measurements.length,
+        estimateCleared: clearPhotoEstimateFor(sessionId),
+      };
+
+      setActive((current) => (current?.id === sessionId ? undefined : current));
+      setHistory((current) => {
+        const next = current.filter((session) => session.id !== sessionId);
+        // Same array when nothing matched, so React skips the render.
+        return next.length === current.length ? current : next;
+      });
+
+      return receipt;
+    },
+    [active, history],
+  );
 
   const recorded = useCallback(
     (pointId: string) => (active ? measurementForPoint(active, pointId) : undefined),
