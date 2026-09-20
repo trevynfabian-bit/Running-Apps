@@ -788,6 +788,79 @@ export const compositionPhotos = pgTable(
   ],
 );
 
+/**
+ * Measure points available for circumference recording.
+ *
+ * Reference data, not athlete data: the rows are seeded by migration and are
+ * the same for everyone. A table rather than a constant so the guide text can
+ * be corrected, and a point added, without shipping a new client build —
+ * the app renders whatever the server lists.
+ *
+ * `code` is the stable identifier the client and any future import path key
+ * on; the uuid is an implementation detail that must never appear in a URL an
+ * athlete could bookmark across environments.
+ */
+export const circumferencePoints = pgTable(
+  'circumference_points',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    code: text('code').notNull(), // waist | chest | left_arm | ...
+    label: text('label').notNull(),
+    guideText: text('guide_text').notNull(),
+    sortOrder: integer('sort_order').notNull(),
+    /** Retired points stay for the measurements that reference them. */
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt,
+    updatedAt,
+  },
+  (t) => [uniqueIndex('circumference_points_code_unique').on(t.code)],
+);
+
+/**
+ * One circumference recorded in one session.
+ *
+ * Named `composition_measurements`, not `body_measurements` as the PRD has it:
+ * that name is already taken above by provider-sourced weight, height and
+ * heart-rate observations. Two different things called the same thing is how a
+ * query ends up joining an athlete's waist against their resting heart rate.
+ *
+ * `value_cm` is canonical centimetres, matching the way distance is always
+ * metres. `recorded_unit` remembers what the athlete actually read off the
+ * tape, which is what lets the app re-display a measurement honestly after they
+ * switch their default — a waist taken as 34 in shows as 34.0 in, not as the
+ * 86.36 cm a naive round-trip would produce.
+ *
+ * Unique on (session, point): a session holds at most one value per point.
+ * Re-measuring after the tape slipped replaces the earlier number. Two waist
+ * values in one session would leave the comparison view and the body-fat
+ * formula guessing which one the athlete meant, and the honest answer is always
+ * the one they took last.
+ */
+export const compositionMeasurements = pgTable(
+  'composition_measurements',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => bodyCompositionSessions.id, { onDelete: 'cascade' }),
+    pointId: uuid('point_id')
+      .notNull()
+      // Restrict, not cascade: retiring a measure point must never silently
+      // delete the history an athlete recorded against it.
+      .references(() => circumferencePoints.id, { onDelete: 'restrict' }),
+    valueCm: doublePrecision('value_cm').notNull(),
+    recordedUnit: text('recorded_unit').notNull().default('cm'), // cm | in
+    capturedAt: timestamp('captured_at', { withTimezone: true }).notNull(),
+    createdAt,
+    updatedAt,
+  },
+  (t) => [
+    uniqueIndex('composition_measurements_session_point_unique').on(t.sessionId, t.pointId),
+    // "This point over time" is the history screen's only query.
+    index('composition_measurements_point_captured').on(t.pointId, t.capturedAt),
+  ],
+);
+
 // ---------------------------------------------------------------------------
 // Sync and observability
 // ---------------------------------------------------------------------------
@@ -892,6 +965,8 @@ export const schema = {
   weeklySummaries,
   bodyCompositionSessions,
   compositionPhotos,
+  circumferencePoints,
+  compositionMeasurements,
   syncJobs,
   syncEvents,
   auditLogs,
