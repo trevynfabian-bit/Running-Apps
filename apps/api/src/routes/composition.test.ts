@@ -1391,3 +1391,174 @@ describe('GET /api/composition/sessions/options', () => {
     expect((await app.request('/api/composition/sessions/options')).status).toBe(401);
   });
 });
+
+describe('serving and pairing photos', () => {
+  let photoToken: string;
+  let juneId: string;
+  let septemberId: string;
+
+  beforeAll(async () => {
+    const signUp = await app.request('/api/auth/signup', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: 'photo-compare@example.test',
+        password: 'a-long-enough-password',
+        displayName: 'Photo Compare',
+      }),
+    });
+    photoToken = ((await signUp.json()) as { token: string }).token;
+
+    const create = async (capturedAt: string): Promise<string> => {
+      const created = (await (
+        await app.request('/api/composition/sessions', {
+          method: 'POST',
+          headers: { authorization: `Bearer ${photoToken}` },
+          body: sessionForm({}, { capturedAt }),
+        })
+      ).json()) as { id: string };
+      return created.id;
+    };
+
+    juneId = await create('2026-06-14T07:30:00.000Z');
+    septemberId = await create('2026-09-06T07:45:00.000Z');
+  }, 60_000);
+
+  describe('GET /sessions/:id/photos/:photoId', () => {
+    async function firstPhoto(sessionId: string, auth = photoToken) {
+      const listed = (await (
+        await app.request('/api/composition/sessions?limit=100', {
+          headers: { authorization: `Bearer ${auth}` },
+        })
+      ).json()) as { sessions: { id: string; photos: { id: string; url: string }[] }[] };
+
+      return listed.sessions.find((session) => session.id === sessionId)!.photos[0]!;
+    }
+
+    it('serves the bytes at the url the session listing gave', async () => {
+      const photo = await firstPhoto(juneId);
+
+      // The url in every DTO has pointed here since the sessions endpoint
+      // landed; this is the route it names.
+      const response = await app.request(photo.url, {
+        headers: { authorization: `Bearer ${photoToken}` },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get('content-type')).toBe('image/jpeg');
+      expect((await response.arrayBuffer()).byteLength).toBeGreaterThan(0);
+    });
+
+    it('marks the response private and non-sniffable', async () => {
+      const photo = await firstPhoto(juneId);
+      const response = await app.request(photo.url, {
+        headers: { authorization: `Bearer ${photoToken}` },
+      });
+
+      // Private so no shared cache between here and the device keeps a body
+      // photo; nosniff so nothing interprets it as a document.
+      expect(response.headers.get('cache-control')).toContain('private');
+      expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+    });
+
+    it('will not serve a photo through a session it does not belong to', async () => {
+      const photo = await firstPhoto(juneId);
+
+      // Same athlete, wrong session: a photo id is not a capability on its own.
+      const response = await app.request(
+        `/api/composition/sessions/${septemberId}/photos/${photo.id}`,
+        { headers: { authorization: `Bearer ${photoToken}` } },
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    it('will not serve another athlete photo', async () => {
+      const photo = await firstPhoto(juneId);
+
+      const response = await app.request(photo.url, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(response.status).toBe(404);
+    });
+
+    it('requires a signed-in athlete', async () => {
+      const photo = await firstPhoto(juneId);
+      expect((await app.request(photo.url)).status).toBe(401);
+    });
+  });
+
+  describe('GET /compare/photos', () => {
+    it('pairs all four sides between two sessions', async () => {
+      const body = (await (
+        await app.request(
+          `/api/composition/compare/photos?earlierId=${juneId}&laterId=${septemberId}`,
+          { headers: { authorization: `Bearer ${photoToken}` } },
+        )
+      ).json()) as {
+        photos: { side: string; comparable: boolean; earlier?: unknown; later?: unknown }[];
+      };
+
+      expect(body.photos.map((pair) => pair.side)).toEqual(['front', 'back', 'left', 'right']);
+      expect(body.photos.every((pair) => pair.comparable)).toBe(true);
+    });
+
+    it('orders the pair by date whichever way the ids were given', async () => {
+      const body = (await (
+        await app.request(
+          `/api/composition/compare/photos?earlierId=${septemberId}&laterId=${juneId}`,
+          { headers: { authorization: `Bearer ${photoToken}` } },
+        )
+      ).json()) as { earlier: { id: string }; later: { id: string } };
+
+      // Which one the athlete tapped first says nothing about which came first.
+      expect(body.earlier.id).toBe(juneId);
+      expect(body.later.id).toBe(septemberId);
+    });
+
+    it('resolves a window to its widest pair', async () => {
+      const body = (await (
+        await app.request('/api/composition/compare/photos', {
+          headers: { authorization: `Bearer ${photoToken}` },
+        })
+      ).json()) as { earlier: { id: string }; later: { id: string } };
+
+      expect(body.earlier.id).toBe(juneId);
+      expect(body.later.id).toBe(septemberId);
+    });
+
+    it('refuses a session compared against itself', async () => {
+      const response = await app.request(
+        `/api/composition/compare/photos?earlierId=${juneId}&laterId=${juneId}`,
+        { headers: { authorization: `Bearer ${photoToken}` } },
+      );
+
+      expect(response.status).toBe(400);
+    });
+
+    it('refuses a window holding fewer than two sessions', async () => {
+      const response = await app.request('/api/composition/compare/photos?days=1', {
+        headers: { authorization: `Bearer ${photoToken}` },
+      });
+
+      // One session is not a comparison, and widening the range silently would
+      // answer a question nobody asked.
+      expect(response.status).toBe(400);
+      const body = (await response.json()) as { error: { message: string } };
+      expect(body.error.message).toContain('two sessions');
+    });
+
+    it('reports another athlete session as not found', async () => {
+      const response = await app.request(
+        `/api/composition/compare/photos?earlierId=${juneId}&laterId=${septemberId}`,
+        { headers: { authorization: `Bearer ${token}` } },
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    it('requires a signed-in athlete', async () => {
+      expect((await app.request('/api/composition/compare/photos')).status).toBe(401);
+    });
+  });
+});

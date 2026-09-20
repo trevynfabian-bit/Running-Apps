@@ -14,10 +14,11 @@
  */
 
 import { Hono } from 'hono';
-import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 
 import {
   PHOTO_SIDES,
+  compareSessionsQuerySchema,
   createCompositionSessionSchema,
   calculateBodyFatSchema,
   recordMeasurementSchema,
@@ -25,6 +26,7 @@ import {
   type BodyFatEstimateDto,
   type BodyFatHistoryDto,
   type ComparisonOptionDto,
+  type PhotoPairDto,
   type MetricHistoryDto,
   type CompositionMeasurementDto,
   type CompositionPhotoDto,
@@ -1121,3 +1123,166 @@ compositionRoutes.get('/sessions/options', async (c) => {
 
   return c.json({ sessions: options });
 });
+
+/**
+ * Serve one photo's bytes.
+ *
+ * The only way a photo ever leaves this server to a client. Storage keys are
+ * never handed out, so an athlete's app asks for a photo by session and photo
+ * id and we check both belong to them before opening anything — a key in a URL
+ * would be a capability that outlives the session that granted it.
+ *
+ * Cached privately rather than not at all. Four photos re-downloaded on every
+ * render of a comparison screen is a real cost on a phone, and the response is
+ * marked private so no shared cache between here and the device keeps a copy.
+ */
+compositionRoutes.get('/sessions/:sessionId/photos/:photoId', async (c) => {
+  const athleteId = c.get('athleteId');
+  const sessionId = c.req.param('sessionId');
+
+  const { db } = await getDb();
+  await ownedSession(db, athleteId, sessionId);
+
+  const [photo] = await db
+    .select()
+    .from(compositionPhotos)
+    .where(
+      and(
+        eq(compositionPhotos.id, c.req.param('photoId')),
+        // Scoped to the session in the query: a photo id from another
+        // session, even the athlete's own, is not reachable through this one.
+        eq(compositionPhotos.sessionId, sessionId),
+      ),
+    )
+    .limit(1);
+
+  if (!photo) throw notFound('Photo');
+
+  const file = await photoStorage().read(photo.storageKey);
+  // A row without bytes is a 404 for the caller, and a real problem for us.
+  if (!file) {
+    logger.error('composition.photo_missing', { sessionId, photoId: photo.id });
+    throw notFound('Photo');
+  }
+
+  c.header('content-type', file.contentType);
+  c.header('content-length', String(file.bytes.byteLength));
+  c.header('cache-control', 'private, max-age=3600, must-revalidate');
+  // Nothing about this response should be interpreted as a document.
+  c.header('x-content-type-options', 'nosniff');
+  c.header(
+    'content-disposition',
+    `inline; filename="${photo.side}.${photo.contentType.split('/')[1] ?? 'jpg'}"`,
+  );
+
+  return c.body(file.bytes as unknown as ArrayBuffer);
+});
+
+/**
+ * Two sessions' photos, paired by side.
+ *
+ * All four sides come back whether or not both photos exist. A response that
+ * quietly dropped the sides it could not pair would make a half-photographed
+ * session look complete, and the value of a four-side set is precisely that the
+ * same view is in both sessions to put against each other.
+ */
+compositionRoutes.get('/compare/photos', async (c) => {
+  const athleteId = c.get('athleteId');
+
+  const parsed = compareSessionsQuerySchema.safeParse({
+    earlierId: c.req.query('earlierId'),
+    laterId: c.req.query('laterId'),
+    ...(c.req.query('days') !== undefined ? { days: c.req.query('days') } : {}),
+  });
+  if (!parsed.success) {
+    throw badRequest(parsed.error.issues[0]?.message ?? 'Those sessions were not valid.');
+  }
+
+  const { db } = await getDb();
+  const pair = await resolveComparisonPair(db, athleteId, parsed.data);
+
+  const photos = await db
+    .select()
+    .from(compositionPhotos)
+    .where(inArray(compositionPhotos.sessionId, [pair.earlier.id, pair.later.id]));
+
+  const find = (sessionId: string, side: string): PhotoRow | undefined =>
+    photos.find((photo) => photo.sessionId === sessionId && photo.side === side);
+
+  const pairs: PhotoPairDto[] = PHOTO_SIDES.map((side) => {
+    const earlier = find(pair.earlier.id, side);
+    const later = find(pair.later.id, side);
+
+    return {
+      side,
+      ...(earlier ? { earlier: toPhotoDto(earlier) } : {}),
+      ...(later ? { later: toPhotoDto(later) } : {}),
+      comparable: earlier !== undefined && later !== undefined,
+    };
+  });
+
+  return c.json({
+    earlier: {
+      id: pair.earlier.id,
+      capturedAt: pair.earlier.capturedAt.toISOString(),
+      localDate: pair.earlier.localDate,
+    },
+    later: {
+      id: pair.later.id,
+      capturedAt: pair.later.capturedAt.toISOString(),
+      localDate: pair.later.localDate,
+    },
+    photos: pairs,
+  });
+});
+
+/**
+ * Work out which two sessions a request means.
+ *
+ * Two ids, or a window that resolves to its widest pair — "the last three
+ * months" means the span of that window, not the two most recent sessions that
+ * happen to fall inside it. Fewer than two sessions is a 400 rather than an
+ * empty comparison, because one session is not a comparison and silently
+ * widening the range would answer a question nobody asked.
+ */
+async function resolveComparisonPair(
+  db: Awaited<ReturnType<typeof getDb>>['db'],
+  athleteId: string,
+  query: { earlierId?: string; laterId?: string; days?: number },
+): Promise<{ earlier: SessionRow; later: SessionRow }> {
+  if (query.earlierId && query.laterId) {
+    const earlier = await ownedSession(db, athleteId, query.earlierId);
+    const later = await ownedSession(db, athleteId, query.laterId);
+
+    // Ordered here, so "earlier" and "later" mean what they say downstream
+    // regardless of which one the athlete tapped first.
+    return earlier.capturedAt <= later.capturedAt
+      ? { earlier, later }
+      : { earlier: later, later: earlier };
+  }
+
+  const cutoff =
+    query.days === undefined ? undefined : new Date(Date.now() - query.days * 86_400_000);
+
+  const sessions = await db
+    .select()
+    .from(bodyCompositionSessions)
+    .where(
+      cutoff === undefined
+        ? eq(bodyCompositionSessions.athleteId, athleteId)
+        : and(
+            eq(bodyCompositionSessions.athleteId, athleteId),
+            gte(bodyCompositionSessions.capturedAt, cutoff),
+          ),
+    )
+    .orderBy(desc(bodyCompositionSessions.capturedAt));
+
+  if (sessions.length < 2) {
+    throw badRequest(
+      'A comparison needs two sessions in the range you chose. Try a longer range, or pick two sessions directly.',
+      { found: sessions.length },
+    );
+  }
+
+  return { earlier: sessions[sessions.length - 1]!, later: sessions[0]! };
+}
