@@ -65,15 +65,22 @@ import {
   type FormulaVariant,
 } from '../../src/lib/body-fat-inputs';
 import { findPoint } from '../../src/lib/body-composition';
+import {
+  cachedPhotoEstimate,
+  requestPhotoEstimate,
+  type PhotoEstimateState,
+} from '../../src/lib/photo-estimate-stub';
 import { useCompositionSessions } from '../../src/lib/composition-session-store';
 import { useMeasurementUnit } from '../../src/lib/measurement-units';
 import { UNIT_OPTIONS } from '../../src/lib/measurement-units';
 import { spacing } from '../../src/design/tokens';
 import {
+  Button,
   Card,
   Chip,
   Divider,
   EmptyState,
+  LoadingState,
   Screen,
   SectionHeader,
   Stack,
@@ -109,9 +116,9 @@ export default function BodyFatScreen(): React.ReactElement {
   const [massUnit, setMassUnit] = useState<MassUnit>(massUnitForLengthUnit(defaultUnit));
   const [heightText, setHeightText] = useState('');
   const [weightText, setWeightText] = useState('');
+  const [photoState, setPhotoState] = useState<PhotoEstimateState>({ status: 'idle' });
 
   const estimates = STUB_ESTIMATES;
-  const selected = estimateFor(estimates, method);
 
   const heightTyped = parseLength(heightText);
   const heightCm =
@@ -184,12 +191,29 @@ export default function BodyFatScreen(): React.ReactElement {
    * on screen while the service is down reads as current, and an athlete has no
    * way to tell it apart from one taken a minute ago.
    */
+  const latestSessionId = sessions[0]?.id ?? 'session';
+
+  /**
+   * A photo reading already held for this session.
+   *
+   * Re-analysing the same photographs is out of scope — the same input through
+   * the same model gives the same answer, so a second run would be noise
+   * presented as new information. Once read, the answer is simply shown.
+   */
+  const photoEstimate =
+    photoState.status === 'done' ? photoState.estimate : cachedPhotoEstimate(latestSessionId);
+
   const shown =
     method === 'formula'
       ? (formulaEstimate ?? estimateFor(estimates, 'formula'))
       : photoAvailability.availability === 'ready'
-        ? selected
+        ? photoEstimate
         : undefined;
+
+  const readPhotos = (): void => {
+    setPhotoState({ status: 'requesting' });
+    void requestPhotoEstimate(latestSessionId).then(setPhotoState);
+  };
 
   const heightError =
     heightText !== '' && (heightCm === undefined || !isPlausibleHeightCm(heightCm))
@@ -207,11 +231,50 @@ export default function BodyFatScreen(): React.ReactElement {
         {method === 'ai' ? (
           <View>
             <SectionHeader title="Photo service" />
-            <ServiceStatusNotice
-              message={photoAvailability}
-              onSwitchToFormula={() => setMethod('formula')}
-              onTakePhotos={() => router.push('/composition/measurements')}
-            />
+            <Stack gap={spacing.md}>
+              <ServiceStatusNotice
+                message={photoAvailability}
+                onSwitchToFormula={() => setMethod('formula')}
+                onTakePhotos={() => router.push('/composition/measurements')}
+              />
+
+              {photoAvailability.availability === 'ready' ? (
+                <Card>
+                  {photoState.status === 'requesting' ? (
+                    <LoadingState label="Reading your photos" />
+                  ) : photoState.status === 'failed' ? (
+                    <Stack gap={spacing.md}>
+                      <Type variant="bodyStrong" tone="negative">
+                        That read did not finish
+                      </Type>
+                      <Type variant="body" tone="secondary">
+                        {photoState.reason} Your photos are untouched, so trying again is safe.
+                      </Type>
+                      <Button label="Try again" onPress={readPhotos} variant="secondary" />
+                    </Stack>
+                  ) : photoEstimate ? (
+                    <Stack gap={spacing.sm}>
+                      <Type variant="bodyStrong">Your photos have been read</Type>
+                      {/* No "read again" button: the same photographs through
+                          the same model give the same answer, and offering a
+                          re-run would imply otherwise. */}
+                      <Type variant="body" tone="secondary">
+                        This session was read once. The result below is that reading — running it
+                        again on the same photos would give the same answer.
+                      </Type>
+                    </Stack>
+                  ) : (
+                    <Stack gap={spacing.md}>
+                      <Type variant="body" tone="secondary">
+                        Your four session photos can be read to estimate body fat. It takes a moment
+                        and happens once per session.
+                      </Type>
+                      <Button label="Read my photos" onPress={readPhotos} />
+                    </Stack>
+                  )}
+                </Card>
+              ) : null}
+            </Stack>
           </View>
         ) : null}
 
