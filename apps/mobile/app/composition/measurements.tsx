@@ -22,6 +22,11 @@
  * measured in, so changing the default never rewrites what an earlier session
  * recorded.
  *
+ * Saved values go into the active session — one documentation moment holding
+ * at most one value per point — rather than into a flat list local to this
+ * screen. That is what a later session gets compared against, and it is why
+ * re-measuring a point replaces its value instead of adding a second one.
+ *
  * Data is stubbed: this is the UI half of the feature, built against the
  * contract in the PRD. Nothing here talks to the API yet.
  */
@@ -41,6 +46,7 @@ import {
   findPoint,
   type BodyMeasurement,
 } from '../../src/lib/body-composition';
+import { useActiveSession } from '../../src/lib/composition-session-store';
 import { UNIT_OPTIONS, useMeasurementUnit } from '../../src/lib/measurement-units';
 import {
   clearDraft,
@@ -69,9 +75,10 @@ export default function MeasurementsScreen(): React.ReactElement {
   const theme = useTheme();
   const { defaultUnit, ready, setDefaultUnit } = useMeasurementUnit();
 
+  const { session, record, recorded } = useActiveSession();
+
   const [pointId, setPointId] = useState(STUB_CIRCUMFERENCE_POINTS[0]!.id);
   const [drafts, setDrafts] = useState<DraftsByPoint>({});
-  const [entries, setEntries] = useState<BodyMeasurement[]>([]);
   const [error, setError] = useState<string>();
 
   /**
@@ -118,6 +125,9 @@ export default function MeasurementsScreen(): React.ReactElement {
    * Listed in the picker's own order rather than the order they were typed, so
    * the names read down the body the same way the chips above them do.
    */
+  /** What this session already holds for the point on screen, if anything. */
+  const alreadyRecorded = recorded(pointId);
+
   const inProgress = STUB_CIRCUMFERENCE_POINTS.filter(
     (option) =>
       option.id !== pointId &&
@@ -147,16 +157,15 @@ export default function MeasurementsScreen(): React.ReactElement {
       return;
     }
 
-    setEntries((current) => [
-      {
-        id: `local-${Date.now()}`,
-        pointId,
-        valueCm: toCanonicalLength(parsed, entryUnit),
-        recordedUnit: entryUnit,
-        capturedAt: new Date().toISOString(),
-      },
-      ...current,
-    ]);
+    // Into the active session, which starts on this first record if there
+    // isn't one yet. Measuring a point twice replaces its value rather than
+    // leaving the session holding two answers for one question.
+    record({
+      pointId,
+      valueCm: toCanonicalLength(parsed, entryUnit),
+      recordedUnit: entryUnit,
+      capturedAt: new Date().toISOString(),
+    });
 
     setError(undefined);
     // Drop this point's draft entirely — value and unit. The next entry on it
@@ -296,22 +305,37 @@ export default function MeasurementsScreen(): React.ReactElement {
                 ) : null}
               </Stack>
 
-              <Button label="Save measurement" onPress={save} />
+              {alreadyRecorded ? (
+                <Type variant="caption" tone="caution">
+                  {point?.label ?? 'This point'} is already in this session at{' '}
+                  {formatCanonicalLength(alreadyRecorded.valueCm, defaultUnit)}. Saving replaces it.
+                </Type>
+              ) : null}
+
+              <Button
+                label={alreadyRecorded ? 'Replace measurement' : 'Save measurement'}
+                onPress={save}
+              />
             </Stack>
           </Card>
         </View>
 
         <View>
-          <SectionHeader title="Recorded this session" />
-          {entries.length === 0 ? (
+          <SectionHeader title="This session" />
+          {!session || session.measurements.length === 0 ? (
             <EmptyState
               title="Nothing recorded yet"
-              body="Pick a measure point, enter the number from the tape, and save it."
+              body="Pick a measure point, enter the number from the tape, and save it. The session starts with your first measurement."
             />
           ) : (
             <Card>
               <Stack gap={spacing.md}>
-                {entries.map((entry, index) => (
+                <Type variant="caption" tone="tertiary">
+                  {session.measurements.length} of {STUB_CIRCUMFERENCE_POINTS.length} points
+                  measured
+                </Type>
+                <Divider />
+                {session.measurements.map((entry, index) => (
                   <React.Fragment key={entry.id}>
                     {index > 0 ? <Divider /> : null}
                     <EntryRow entry={entry} displayUnit={defaultUnit} />

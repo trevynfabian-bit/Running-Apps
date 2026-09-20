@@ -7,6 +7,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ThemeProvider, useTheme } from '../src/design/theme';
 import { SessionProvider, useSession } from '../src/lib/session';
 import { MeasurementUnitProvider } from '../src/lib/measurement-units';
+import { ActiveSessionProvider } from '../src/lib/composition-session-store';
 import { LoadingState, Screen } from '../src/components/primitives';
 
 /**
@@ -66,8 +67,10 @@ export default function RootLayout(): React.ReactElement {
         <ThemeProvider>
           <SessionProvider>
             <MeasurementUnitProvider>
-              <StatusBar style="auto" />
-              <RootNavigator />
+              <ActiveSessionProvider>
+                <StatusBar style="auto" />
+                <RootNavigator />
+              </ActiveSessionProvider>
             </MeasurementUnitProvider>
           </SessionProvider>
         </ThemeProvider>
