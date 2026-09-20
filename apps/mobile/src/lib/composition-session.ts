@@ -19,7 +19,12 @@
 
 import type { LengthUnit } from '@running/core';
 
-import type { BodyMeasurement, CircumferencePoint } from './body-composition';
+import type {
+  BodyMeasurement,
+  CircumferencePoint,
+  CompositionPhoto,
+  PhotoSide,
+} from './body-composition';
 
 export interface BodyCompositionSession {
   id: string;
@@ -27,10 +32,25 @@ export interface BodyCompositionSession {
   capturedAt: string;
   /** At most one entry per `pointId`, most recently recorded first. */
   measurements: readonly BodyMeasurement[];
+  /** At most one per side. Absent until the session has been photographed. */
+  photos?: readonly CompositionPhoto[];
 }
 
 export function createSession(id: string, capturedAt: string): BodyCompositionSession {
   return { id, capturedAt, measurements: [] };
+}
+
+/** The photo a session holds for one side, if it has one. */
+export function photoForSide(
+  session: BodyCompositionSession | undefined,
+  side: PhotoSide,
+): CompositionPhoto | undefined {
+  return session?.photos?.find((photo) => photo.side === side);
+}
+
+/** True when the session has at least one photo. */
+export function hasPhotos(session: BodyCompositionSession | undefined): boolean {
+  return (session?.photos?.length ?? 0) > 0;
 }
 
 /**

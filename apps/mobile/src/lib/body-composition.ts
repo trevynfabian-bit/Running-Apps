@@ -27,6 +27,32 @@ export interface CircumferencePoint {
   sortOrder: number;
 }
 
+/** The four sides a session documents. Fixed, so a pair can be matched up. */
+export const PHOTO_SIDES = ['front', 'back', 'left', 'right'] as const;
+export type PhotoSide = (typeof PHOTO_SIDES)[number];
+
+export const SIDE_LABELS: Record<PhotoSide, string> = {
+  front: 'Front',
+  back: 'Back',
+  left: 'Left',
+  right: 'Right',
+};
+
+export interface CompositionPhoto {
+  id: string;
+  side: PhotoSide;
+  /**
+   * Authenticated route that serves the bytes, as the API hands it back.
+   *
+   * Optional here and absent from the fixtures, because there is nothing local
+   * to point it at: the photos live server-side and the capture screen does not
+   * exist yet. The comparison renders a labelled placeholder in its place
+   * rather than an image that silently fails to load.
+   */
+  uri?: string;
+  capturedAt: string;
+}
+
 export interface BodyMeasurement {
   id: string;
   pointId: string;

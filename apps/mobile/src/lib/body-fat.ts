@@ -116,17 +116,6 @@ export const STUB_ESTIMATES: readonly BodyFatEstimate[] = [
   },
 ];
 
-/**
- * Whether the latest session has a photo set.
- *
- * Stubbed, and deliberately a named constant rather than something derived: the
- * client's session model carries measurements but not photos yet — those live
- * only server-side until the capture screen lands — so there is nothing honest
- * to derive this from. This is the seam where the real check goes, and naming
- * it keeps the gap visible instead of hiding it behind a plausible expression.
- */
-export const STUB_SESSION_HAS_PHOTOS = true;
-
 export function estimateFor(
   estimates: readonly BodyFatEstimate[],
   method: BodyFatMethod,

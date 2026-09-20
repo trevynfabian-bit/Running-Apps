@@ -19,8 +19,18 @@
 
 import { netChangeCm, type LengthUnit } from '@running/core';
 
-import { STUB_CIRCUMFERENCE_POINTS, type CircumferencePoint } from './body-composition';
-import { measurementForPoint, type BodyCompositionSession } from './composition-session';
+import {
+  PHOTO_SIDES,
+  STUB_CIRCUMFERENCE_POINTS,
+  type CircumferencePoint,
+  type CompositionPhoto,
+  type PhotoSide,
+} from './body-composition';
+import {
+  measurementForPoint,
+  photoForSide,
+  type BodyCompositionSession,
+} from './composition-session';
 
 export interface ComparisonRow {
   point: CircumferencePoint;
@@ -219,4 +229,47 @@ export function selectSlot(
   return slot === 'earlier'
     ? { ...current, earlierId: sessionId }
     : { ...current, laterId: sessionId };
+}
+
+// ---------------------------------------------------------------------------
+// Photos
+// ---------------------------------------------------------------------------
+
+export interface PhotoPair {
+  side: PhotoSide;
+  earlier?: CompositionPhoto;
+  later?: CompositionPhoto;
+  /** True when both sides of the pair exist and can be read against each other. */
+  comparable: boolean;
+}
+
+/**
+ * Pair up the two sessions' photos, side by side.
+ *
+ * All four sides are always returned, in a fixed order, even when neither
+ * session has one. A comparison that quietly dropped the sides it could not
+ * show would make a half-photographed session look complete — and the whole
+ * value of a four-side set is that the same view is there in both sessions to
+ * put against each other.
+ */
+export function comparePhotos(
+  earlier: BodyCompositionSession | undefined,
+  later: BodyCompositionSession | undefined,
+): PhotoPair[] {
+  return PHOTO_SIDES.map((side) => {
+    const from = photoForSide(earlier, side);
+    const to = photoForSide(later, side);
+
+    return {
+      side,
+      ...(from ? { earlier: from } : {}),
+      ...(to ? { later: to } : {}),
+      comparable: from !== undefined && to !== undefined,
+    };
+  });
+}
+
+/** How many sides can actually be shown against each other. */
+export function comparablePhotoCount(pairs: readonly PhotoPair[]): number {
+  return pairs.filter((pair) => pair.comparable).length;
 }

@@ -13,7 +13,20 @@
  * case shows up in the UI too.
  */
 
+import { PHOTO_SIDES, type CompositionPhoto } from './body-composition';
 import type { BodyCompositionSession } from './composition-session';
+
+/**
+ * A full photo set for one session.
+ *
+ * No `uri`: the bytes live server-side and the capture screen does not exist
+ * yet, so there is nothing local to point at. The comparison draws a labelled
+ * placeholder rather than an image that silently fails to load — which is the
+ * honest rendering of "this session has a front photo we cannot show you here".
+ */
+function photoSet(sessionId: string, capturedAt: string): CompositionPhoto[] {
+  return PHOTO_SIDES.map((side) => ({ id: `${sessionId}-${side}`, side, capturedAt }));
+}
 
 /** Helper keeps the fixtures below readable — ids are positional, not meaningful. */
 function cm(
@@ -36,6 +49,7 @@ export const STUB_SESSION_HISTORY: readonly BodyCompositionSession[] = [
   {
     id: 'session-2026-06-14',
     capturedAt: '2026-06-14T07:30:00.000Z',
+    photos: photoSet('session-2026-06-14', '2026-06-14T07:30:00.000Z'),
     measurements: [
       cm('session-2026-06-14', 'point-neck', 38.5, '2026-06-14T07:30:00.000Z'),
       cm('session-2026-06-14', 'point-chest', 99.0, '2026-06-14T07:30:00.000Z'),
@@ -47,6 +61,8 @@ export const STUB_SESSION_HISTORY: readonly BodyCompositionSession[] = [
     ],
   },
   {
+    // Measurements only, no photos — the athlete ran the tape but skipped the
+    // camera. The comparison has to cope with that.
     id: 'session-2026-07-12',
     capturedAt: '2026-07-12T07:15:00.000Z',
     measurements: [
@@ -63,6 +79,7 @@ export const STUB_SESSION_HISTORY: readonly BodyCompositionSession[] = [
     // Measured on a tape marked in inches; values are stored canonically.
     id: 'session-2026-08-09',
     capturedAt: '2026-08-09T08:00:00.000Z',
+    photos: photoSet('session-2026-08-09', '2026-08-09T08:00:00.000Z'),
     measurements: [
       cm('session-2026-08-09', 'point-neck', 38.1, '2026-08-09T08:00:00.000Z', 'in'),
       cm('session-2026-08-09', 'point-chest', 99.7, '2026-08-09T08:00:00.000Z', 'in'),
@@ -76,6 +93,7 @@ export const STUB_SESSION_HISTORY: readonly BodyCompositionSession[] = [
   {
     id: 'session-2026-09-06',
     capturedAt: '2026-09-06T07:45:00.000Z',
+    photos: photoSet('session-2026-09-06', '2026-09-06T07:45:00.000Z'),
     measurements: [
       cm('session-2026-09-06', 'point-neck', 38.0, '2026-09-06T07:45:00.000Z'),
       cm('session-2026-09-06', 'point-chest', 99.8, '2026-09-06T07:45:00.000Z'),

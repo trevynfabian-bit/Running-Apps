@@ -9,7 +9,9 @@ import { STUB_CIRCUMFERENCE_POINTS } from './body-composition';
 import type { BodyCompositionSession } from './composition-session';
 import {
   RANGE_PRESETS,
+  comparablePhotoCount,
   comparableRows,
+  comparePhotos,
   compareSessions,
   daysBetween,
   netChangeForPoint,
@@ -262,5 +264,60 @@ describe('selectSlot', () => {
 
   it('is a no-op when the slot already holds that session', () => {
     expect(selectSlot(current, 'earlier', 'june')).toEqual(current);
+  });
+});
+
+describe('comparePhotos', () => {
+  function withPhotos(
+    base: BodyCompositionSession,
+    sides: readonly ('front' | 'back' | 'left' | 'right')[],
+  ): BodyCompositionSession {
+    return {
+      ...base,
+      photos: sides.map((side) => ({
+        id: `${base.id}-${side}`,
+        side,
+        capturedAt: base.capturedAt,
+      })),
+    };
+  }
+
+  it('returns all four sides in a fixed order', () => {
+    const pairs = comparePhotos(undefined, undefined);
+
+    expect(pairs.map((pair) => pair.side)).toEqual(['front', 'back', 'left', 'right']);
+  });
+
+  it('pairs a side present in both sessions', () => {
+    const pairs = comparePhotos(
+      withPhotos(JUNE, ['front', 'back', 'left', 'right']),
+      withPhotos(SEPTEMBER, ['front', 'back', 'left', 'right']),
+    );
+
+    expect(pairs.every((pair) => pair.comparable)).toBe(true);
+    expect(comparablePhotoCount(pairs)).toBe(4);
+  });
+
+  it('keeps a side only one session has, and marks it not comparable', () => {
+    const pairs = comparePhotos(
+      withPhotos(JUNE, ['front', 'back', 'left', 'right']),
+      withPhotos(SEPTEMBER, ['front']),
+    );
+
+    const back = pairs.find((pair) => pair.side === 'back');
+    // Dropping it would make a half-photographed session look complete.
+    expect(back?.earlier).toBeDefined();
+    expect(back?.later).toBeUndefined();
+    expect(back?.comparable).toBe(false);
+    expect(comparablePhotoCount(pairs)).toBe(1);
+  });
+
+  it('copes with a session that was never photographed', () => {
+    const pairs = comparePhotos(JUNE, withPhotos(SEPTEMBER, ['front', 'back', 'left', 'right']));
+
+    expect(pairs).toHaveLength(4);
+    expect(comparablePhotoCount(pairs)).toBe(0);
+    expect(pairs.every((pair) => pair.earlier === undefined)).toBe(true);
+    expect(pairs.every((pair) => pair.later !== undefined)).toBe(true);
   });
 });

@@ -46,7 +46,6 @@ import {
   METHOD_DESCRIPTIONS,
   METHOD_LABELS,
   STUB_ESTIMATES,
-  STUB_SESSION_HAS_PHOTOS,
   aiAvailabilityMessage,
   estimateFor,
   formatRange,
@@ -71,6 +70,7 @@ import {
   type PhotoEstimateState,
 } from '../../src/lib/photo-estimate-stub';
 import { useCompositionSessions } from '../../src/lib/composition-session-store';
+import { hasPhotos } from '../../src/lib/composition-session';
 import { useMeasurementUnit } from '../../src/lib/measurement-units';
 import { UNIT_OPTIONS } from '../../src/lib/measurement-units';
 import { spacing } from '../../src/design/tokens';
@@ -180,7 +180,9 @@ export default function BodyFatScreen(): React.ReactElement {
    */
   const photoAvailability = aiAvailabilityMessage(
     estimateFor(estimates, 'ai')?.serviceStatus,
-    STUB_SESSION_HAS_PHOTOS,
+    // Read from the session itself now that the client model carries photos,
+    // rather than the named stub this used to stand on.
+    hasPhotos(sessions[0]),
   );
 
   /**

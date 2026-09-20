@@ -25,7 +25,9 @@ import { useCompositionSessions } from '../../src/lib/composition-session-store'
 import { useMeasurementUnit } from '../../src/lib/measurement-units';
 import {
   RANGE_PRESETS,
+  comparablePhotoCount,
   comparableRows,
+  comparePhotos,
   compareSessions,
   resolveRange,
   selectSlot,
@@ -45,6 +47,7 @@ import {
   Stack,
   Type,
 } from '../../src/components/primitives';
+import { PhotoComparison } from '../../src/components/composition';
 
 function sessionLabel(session: BodyCompositionSession): string {
   return new Date(session.capturedAt).toLocaleDateString(undefined, {
@@ -105,6 +108,7 @@ export default function CompareScreen(): React.ReactElement {
 
   const comparison = pair ? compareSessions(pair.earlier, pair.later) : undefined;
   const comparable = comparison ? comparableRows(comparison) : [];
+  const photoPairs = comparePhotos(comparison?.earlier, comparison?.later);
   const total = comparison ? totalChangeCm(comparison) : undefined;
 
   return (
@@ -185,6 +189,24 @@ export default function CompareScreen(): React.ReactElement {
             </Stack>
           </Card>
         </View>
+
+        {comparison ? (
+          <View>
+            <SectionHeader title="Before and after" />
+            <Stack gap={spacing.md}>
+              <PhotoComparison
+                pairs={photoPairs}
+                earlierLabel={sessionLabel(comparison.earlier)}
+                laterLabel={sessionLabel(comparison.later)}
+              />
+              <Type variant="caption" tone="tertiary">
+                {comparablePhotoCount(photoPairs) === 0
+                  ? 'Neither session has a photo set that can be paired. Photos are what make a visual comparison possible.'
+                  : `${comparablePhotoCount(photoPairs)} of ${photoPairs.length} sides photographed in both sessions.`}
+              </Type>
+            </Stack>
+          </View>
+        ) : null}
 
         {comparison ? (
           <View>

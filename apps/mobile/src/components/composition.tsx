@@ -8,7 +8,7 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, Image, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import {
   formatCanonicalLength,
@@ -20,7 +20,13 @@ import {
   type NavyEstimate,
 } from '@running/core';
 
-import type { BodyMeasurement, CircumferencePoint } from '../lib/body-composition';
+import {
+  SIDE_LABELS,
+  type BodyMeasurement,
+  type CircumferencePoint,
+  type CompositionPhoto,
+} from '../lib/body-composition';
+import type { PhotoPair } from '../lib/composition-compare';
 import type { MetricHistoryEntry } from '../lib/composition-history';
 import {
   BODY_FAT_SCALE,
@@ -1127,5 +1133,123 @@ export function ServiceStatusNotice({
         ) : null}
       </Stack>
     </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Photo comparison
+// ---------------------------------------------------------------------------
+
+/**
+ * The same four views, twice, before against after.
+ *
+ * Paired by side and stacked one row per side, rather than two grids of four.
+ * The comparison an athlete is making is front-to-front; putting the two fronts
+ * anywhere but next to each other asks them to hold one in their head while
+ * they look at the other, which is exactly the job a before-and-after layout
+ * exists to remove.
+ *
+ * All four sides are shown whether or not both photos exist. A layout that
+ * quietly dropped the sides it could not pair would make a half-photographed
+ * session look complete.
+ */
+export function PhotoComparison({
+  pairs,
+  earlierLabel,
+  laterLabel,
+}: {
+  pairs: readonly PhotoPair[];
+  earlierLabel: string;
+  laterLabel: string;
+}): React.ReactElement {
+  return (
+    <Card>
+      <Stack gap={spacing.lg}>
+        <Stack direction="row" gap={spacing.md}>
+          <Type variant="overline" tone="tertiary" style={{ flex: 1 }} accessibilityRole="header">
+            {earlierLabel.toUpperCase()}
+          </Type>
+          <Type variant="overline" tone="tertiary" style={{ flex: 1 }} accessibilityRole="header">
+            {laterLabel.toUpperCase()}
+          </Type>
+        </Stack>
+
+        {pairs.map((pair, index) => (
+          <React.Fragment key={pair.side}>
+            {index > 0 ? <Divider /> : null}
+            <Stack gap={spacing.sm}>
+              <Stack direction="row" justify="space-between" align="center">
+                <Type variant="bodyStrong">{SIDE_LABELS[pair.side]}</Type>
+                {!pair.comparable ? <Chip label="Only one side" tone="caution" selected /> : null}
+              </Stack>
+              <Stack direction="row" gap={spacing.md}>
+                <PhotoSlot photo={pair.earlier} side={SIDE_LABELS[pair.side]} when={earlierLabel} />
+                <PhotoSlot photo={pair.later} side={SIDE_LABELS[pair.side]} when={laterLabel} />
+              </Stack>
+            </Stack>
+          </React.Fragment>
+        ))}
+      </Stack>
+    </Card>
+  );
+}
+
+/**
+ * One photo, or an honest statement of why there is not one.
+ *
+ * Two different absences, told apart: the session never had this side, or it
+ * has it and the bytes are not reachable from here. Rendering both as an empty
+ * box would leave an athlete wondering whether their photo had been lost.
+ */
+function PhotoSlot({
+  photo,
+  side,
+  when,
+}: {
+  photo?: CompositionPhoto;
+  side: string;
+  when: string;
+}): React.ReactElement {
+  const theme = useTheme();
+
+  const frame = {
+    flex: 1,
+    aspectRatio: 3 / 4,
+    borderRadius: radius.md,
+    backgroundColor: theme.color.surfaceRaised,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.color.border,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    overflow: 'hidden' as const,
+    padding: spacing.sm,
+  };
+
+  if (photo?.uri) {
+    return (
+      <Image
+        source={{ uri: photo.uri }}
+        style={frame}
+        resizeMode="cover"
+        accessible
+        accessibilityLabel={`${side} photo from ${when}`}
+      />
+    );
+  }
+
+  return (
+    <View
+      style={frame}
+      accessible
+      accessibilityLabel={
+        photo
+          ? `${side} photo from ${when}, not available in this preview`
+          : `No ${side.toLowerCase()} photo in the ${when} session`
+      }
+    >
+      <Type variant="caption" tone="tertiary" style={{ textAlign: 'center' }}>
+        {photo ? `${side}\n(not loaded here)` : `No ${side.toLowerCase()} photo`}
+      </Type>
+    </View>
   );
 }
