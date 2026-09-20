@@ -52,6 +52,7 @@ function RootNavigator(): React.ReactElement {
         <Stack.Screen name="workout/[id]" options={{ title: 'Workout' }} />
         <Stack.Screen name="composition/measurements" options={{ title: 'Body measurements' }} />
         <Stack.Screen name="composition/body-fat" options={{ title: 'Body fat estimate' }} />
+        <Stack.Screen name="composition/compare" options={{ title: 'Compare sessions' }} />
         <Stack.Screen
           name="why"
           options={{ presentation: 'modal', title: 'Why this recommendation?' }}
