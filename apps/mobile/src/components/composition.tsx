@@ -17,6 +17,7 @@ import {
   parseLength,
   toCanonicalLength,
   type LengthUnit,
+  type NavyEstimate,
 } from '@running/core';
 
 import type { BodyMeasurement, CircumferencePoint } from '../lib/body-composition';
@@ -956,5 +957,104 @@ export function RequirementList({
         </React.Fragment>
       ))}
     </Stack>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Formula result
+// ---------------------------------------------------------------------------
+
+/**
+ * The formula's result with every step that produced it.
+ *
+ * The steps are the feature, not a debug aid. An estimate an athlete cannot
+ * inspect is a number they have to take on trust, and this one does not deserve
+ * that much: seeing it reduce to waist-minus-neck and two logarithms is exactly
+ * what stops it being read as a body scan.
+ *
+ * They are shown expanded rather than behind a disclosure. Transparency that
+ * requires a tap is transparency most people never see, and the whole argument
+ * for showing a soft number at all is that its softness is visible.
+ *
+ * A failed calculation renders the same way: the steps completed before it
+ * broke, and what stopped it. "Waist minus neck came out negative" locates the
+ * problem in a way "could not calculate" never does.
+ */
+export function FormulaSteps({ estimate }: { estimate: NavyEstimate }): React.ReactElement {
+  const theme = useTheme();
+
+  return (
+    <Card>
+      <Stack gap={spacing.lg}>
+        <Stack gap={spacing.xs}>
+          <Type variant="overline" tone="tertiary" accessibilityRole="header">
+            HOW THIS WAS CALCULATED
+          </Type>
+          <Type variant="caption" tone="tertiary">
+            US Navy equation, metric form. Every measurement below is in centimetres.
+          </Type>
+        </Stack>
+
+        <Stack gap={spacing.md}>
+          {estimate.steps.map((step, index) => (
+            <React.Fragment key={step.label}>
+              {index > 0 ? <Divider /> : null}
+              <View
+                accessible
+                accessibilityLabel={`Step ${index + 1}. ${step.label}. ${step.expression} equals ${step.value}${step.unit ? ` ${step.unit}` : ''}`}
+              >
+                <Stack gap={spacing.xs}>
+                  <Stack direction="row" justify="space-between" align="center" gap={spacing.md}>
+                    <Type variant="bodyStrong" style={{ flexShrink: 1 }}>
+                      {step.label}
+                    </Type>
+                    <Type variant="metricSmall">
+                      {step.value}
+                      {step.unit ? ` ${step.unit}` : ''}
+                    </Type>
+                  </Stack>
+                  {/* The arithmetic with the numbers filled in, so the reader
+                      can follow it rather than trust it. */}
+                  <Type variant="caption" tone="tertiary" style={{ fontVariant: ['tabular-nums'] }}>
+                    {step.expression}
+                  </Type>
+                </Stack>
+              </View>
+            </React.Fragment>
+          ))}
+        </Stack>
+
+        {estimate.ok ? (
+          <View
+            style={{
+              borderTopWidth: StyleSheet.hairlineWidth,
+              borderTopColor: theme.color.border,
+              paddingTop: spacing.md,
+            }}
+          >
+            <Type variant="caption" tone="secondary">
+              The band shown above is that figure plus and minus {estimate.standardError.toFixed(1)}{' '}
+              points, which is roughly this method&apos;s published error against a laboratory
+              measurement.
+            </Type>
+          </View>
+        ) : (
+          <View
+            style={{
+              borderTopWidth: StyleSheet.hairlineWidth,
+              borderTopColor: theme.color.border,
+              paddingTop: spacing.md,
+            }}
+          >
+            <Type variant="bodyStrong" tone="negative">
+              Could not finish
+            </Type>
+            <Type variant="body" tone="secondary" style={{ marginTop: spacing.xs }}>
+              {estimate.reason}
+            </Type>
+          </View>
+        )}
+      </Stack>
+    </Card>
   );
 }

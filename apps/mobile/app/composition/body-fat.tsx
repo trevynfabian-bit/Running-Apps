@@ -30,6 +30,7 @@ import {
   formatCanonicalMass,
   fromCanonicalLength,
   fromCanonicalMass,
+  estimateBodyFatNavy,
   massUnitForLengthUnit,
   parseLength,
   parseMass,
@@ -77,6 +78,7 @@ import {
 } from '../../src/components/primitives';
 import {
   BodyFatRange,
+  FormulaSteps,
   NonMedicalNotice,
   QuantityField,
   RequirementList,
@@ -113,14 +115,55 @@ export default function BodyFatScreen(): React.ReactElement {
   const weightTyped = parseMass(weightText);
   const weightKg = weightTyped === undefined ? undefined : toCanonicalMass(weightTyped, massUnit);
 
-  /** Point codes the most recent session actually recorded. */
-  const measuredCodes = (sessions[0]?.measurements ?? [])
-    .map((measurement) => findPoint(measurement.pointId)?.code)
-    .filter((code): code is string => code !== undefined);
+  /** Circumferences the most recent session recorded, keyed by point code. */
+  const measuredCm = new Map<string, number>();
+  for (const measurement of sessions[0]?.measurements ?? []) {
+    const code = findPoint(measurement.pointId)?.code;
+    if (code) measuredCm.set(code, measurement.valueCm);
+  }
+  const measuredCodes = [...measuredCm.keys()];
 
   const requirements = formulaRequirements({ variant, heightCm, weightKg }, measuredCodes);
   const ready = canRunFormula(requirements);
   const missing = outstanding(requirements);
+
+  /**
+   * The live calculation, once every input is in place.
+   *
+   * Computed from this session's own circumferences rather than from the stub,
+   * so the steps on screen describe the athlete's actual measurements. The
+   * photo method still has no implementation and keeps its fixture.
+   */
+  const computed =
+    ready && variant && heightCm !== undefined
+      ? estimateBodyFatNavy({
+          variant,
+          waistCm: measuredCm.get('waist') ?? 0,
+          neckCm: measuredCm.get('neck') ?? 0,
+          heightCm,
+          ...(measuredCm.has('hips') ? { hipsCm: measuredCm.get('hips')! } : {}),
+        })
+      : undefined;
+
+  const formulaEstimate: BodyFatEstimate | undefined =
+    computed?.ok === true
+      ? {
+          id: 'computed-formula',
+          sessionId: sessions[0]?.id ?? 'session',
+          method: 'formula',
+          valueLow: computed.valueLow,
+          valueHigh: computed.valueHigh,
+          // A formula fed complete measurements still only earns moderate:
+          // nothing available here measures body fat.
+          confidence: 'moderate',
+          basis: `US Navy equation from this session's circumferences and a height of ${formatCanonicalLength(heightCm ?? 0, heightUnit)}.`,
+          createdAt: new Date().toISOString(),
+        }
+      : undefined;
+
+  // The live result wins over the fixture whenever it exists.
+  const shown =
+    method === 'formula' ? (formulaEstimate ?? estimateFor(estimates, 'formula')) : selected;
 
   const heightError =
     heightText !== '' && (heightCm === undefined || !isPlausibleHeightCm(heightCm))
@@ -137,8 +180,8 @@ export default function BodyFatScreen(): React.ReactElement {
       <Stack gap={spacing.xl}>
         <View>
           <SectionHeader title="Latest estimate" />
-          {selected ? (
-            <BodyFatRange estimate={selected} />
+          {shown ? (
+            <BodyFatRange estimate={shown} />
           ) : (
             <EmptyState
               title={`No ${METHOD_LABELS[method].toLowerCase()} estimate yet`}
@@ -230,6 +273,13 @@ export default function BodyFatScreen(): React.ReactElement {
             </Stack>
           </Card>
         </View>
+
+        {computed ? (
+          <View>
+            <SectionHeader title="The calculation" />
+            <FormulaSteps estimate={computed} />
+          </View>
+        ) : null}
 
         <View>
           <SectionHeader title="Both methods" />
