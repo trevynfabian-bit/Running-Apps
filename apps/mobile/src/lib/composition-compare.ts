@@ -17,7 +17,7 @@
  * deltas here and the deltas in the history list are the same number.
  */
 
-import { netChangeCm, type LengthUnit } from '@running/core';
+import { changeDirection, netChangeCm, type ChangeDirection, type LengthUnit } from '@running/core';
 
 import {
   PHOTO_SIDES,
@@ -272,4 +272,97 @@ export function comparePhotos(
 /** How many sides can actually be shown against each other. */
 export function comparablePhotoCount(pairs: readonly PhotoPair[]): number {
   return pairs.filter((pair) => pair.comparable).length;
+}
+
+// ---------------------------------------------------------------------------
+// Summarising
+// ---------------------------------------------------------------------------
+
+export interface SummarisedRow extends ComparisonRow {
+  changeCm: number;
+  direction: ChangeDirection;
+}
+
+export interface ComparisonSummary {
+  /** Points that moved by more than the tape can resolve, biggest first. */
+  moved: readonly SummarisedRow[];
+  /** Points measured in both sessions that did not meaningfully move. */
+  steady: readonly SummarisedRow[];
+  /** Points one session has and the other does not. */
+  onlyOneSession: readonly ComparisonRow[];
+  /** Points neither session recorded. */
+  neverMeasured: readonly ComparisonRow[];
+  daysApart: number;
+}
+
+/**
+ * Sort a comparison into what moved, what held, and what could not be read.
+ *
+ * The distinction that earns this function its place is the middle one. A point
+ * that shifted 0.2 cm has not changed — that is the same measurement taken
+ * twice, and putting it in a list of changes teaches an athlete to read noise as
+ * signal and then to act on it. Saying "held steady" is a finding; listing it
+ * among the movers is a small lie repeated every session.
+ *
+ * Movers are ordered by how far they moved, not by whether the direction is
+ * flattering. Nothing here decides which way is good.
+ */
+export function summariseComparison(comparison: SessionComparison): ComparisonSummary {
+  const moved: SummarisedRow[] = [];
+  const steady: SummarisedRow[] = [];
+  const onlyOneSession: ComparisonRow[] = [];
+  const neverMeasured: ComparisonRow[] = [];
+
+  for (const row of comparison.rows) {
+    if (row.changeCm === undefined) {
+      if (row.fromCm !== undefined || row.toCm !== undefined) onlyOneSession.push(row);
+      else neverMeasured.push(row);
+      continue;
+    }
+
+    const summarised: SummarisedRow = {
+      ...row,
+      changeCm: row.changeCm,
+      direction: changeDirection(row.changeCm),
+    };
+
+    if (summarised.direction === 'steady') steady.push(summarised);
+    else moved.push(summarised);
+  }
+
+  moved.sort((a, b) => Math.abs(b.changeCm) - Math.abs(a.changeCm));
+
+  return {
+    moved,
+    steady,
+    onlyOneSession,
+    neverMeasured,
+    daysApart: comparison.daysApart,
+  };
+}
+
+/**
+ * One sentence describing the comparison.
+ *
+ * Counts rather than adjectives. "Three points moved, two held steady" is
+ * something the athlete can check against the rows below it; "good progress" is
+ * a verdict the app has no standing to give.
+ */
+export function summaryHeadline(summary: ComparisonSummary): string {
+  const span =
+    summary.daysApart === 0 ? 'Between these two sessions' : `Over ${summary.daysApart} days`;
+
+  if (summary.moved.length === 0 && summary.steady.length === 0) {
+    return `${span}, no measure point was recorded in both sessions, so there is nothing to compare.`;
+  }
+
+  const parts: string[] = [];
+  if (summary.moved.length > 0) {
+    parts.push(`${summary.moved.length} ${summary.moved.length === 1 ? 'point' : 'points'} moved`);
+  }
+  if (summary.steady.length > 0) {
+    parts.push(`${summary.steady.length} held steady`);
+  }
+
+  return `${span}, ${parts.join(' and ')}.`;
 }

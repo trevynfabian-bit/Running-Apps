@@ -19,6 +19,8 @@ import {
   resolveRange,
   selectSlot,
   sessionsInRange,
+  summariseComparison,
+  summaryHeadline,
   totalChangeCm,
 } from './composition-compare';
 
@@ -319,5 +321,103 @@ describe('comparePhotos', () => {
     expect(comparablePhotoCount(pairs)).toBe(0);
     expect(pairs.every((pair) => pair.earlier === undefined)).toBe(true);
     expect(pairs.every((pair) => pair.later !== undefined)).toBe(true);
+  });
+});
+
+describe('summariseComparison', () => {
+  const NECK = 'point-neck';
+
+  const BEFORE = session('before', '2026-06-14T07:30:00.000Z', {
+    [WAIST]: 88.2,
+    [CHEST]: 99.0,
+    [NECK]: 38.4,
+    [THIGH]: 56.0,
+  });
+  const AFTER = session('after', '2026-09-06T07:45:00.000Z', {
+    [WAIST]: 85.3, // moved, −2.9
+    [CHEST]: 99.8, // moved, +0.8
+    [NECK]: 38.2, // steady, −0.2 is inside the tape noise
+  });
+
+  const summary = summariseComparison(compareSessions(BEFORE, AFTER));
+
+  it('separates a real move from the tape repeating itself', () => {
+    // 0.2 cm is the same measurement taken twice, not progress.
+    expect(summary.moved.map((row) => row.point.code).sort()).toEqual(['chest', 'waist']);
+    expect(summary.steady.map((row) => row.point.code)).toEqual(['neck']);
+  });
+
+  it('reports the direction each mover went', () => {
+    expect(summary.moved.find((row) => row.point.code === 'waist')?.direction).toBe('down');
+    expect(summary.moved.find((row) => row.point.code === 'chest')?.direction).toBe('up');
+    expect(summary.steady[0]?.direction).toBe('steady');
+  });
+
+  it('orders movers by distance, not by which direction flatters', () => {
+    expect(summary.moved.map((row) => row.point.code)).toEqual(['waist', 'chest']);
+  });
+
+  it('keeps a half-measured point out of both lists', () => {
+    // The thigh is in the earlier session only; it did not move and it did not
+    // hold steady, because there is nothing to compare it against.
+    expect(summary.onlyOneSession.map((row) => row.point.code)).toEqual(['thigh']);
+    expect(summary.moved.some((row) => row.point.code === 'thigh')).toBe(false);
+    expect(summary.steady.some((row) => row.point.code === 'thigh')).toBe(false);
+  });
+
+  it('lists points neither session recorded separately again', () => {
+    expect(summary.neverMeasured.length).toBeGreaterThan(0);
+    expect(summary.neverMeasured.every((row) => row.changeCm === undefined)).toBe(true);
+    expect(summary.neverMeasured.map((row) => row.point.code)).not.toContain('thigh');
+  });
+});
+
+describe('summaryHeadline', () => {
+  const NECK = 'point-neck';
+
+  it('counts rather than judging', () => {
+    const summary = summariseComparison(
+      compareSessions(
+        session('a', '2026-06-14T07:30:00.000Z', { [WAIST]: 88.2, [NECK]: 38.4 }),
+        session('b', '2026-09-06T07:45:00.000Z', { [WAIST]: 85.3, [NECK]: 38.3 }),
+      ),
+    );
+
+    // Something the athlete can check against the rows; not a verdict.
+    expect(summaryHeadline(summary)).toBe('Over 84 days, 1 point moved and 1 held steady.');
+  });
+
+  it('uses the plural when it should', () => {
+    const summary = summariseComparison(
+      compareSessions(
+        session('a', '2026-06-14T07:30:00.000Z', { [WAIST]: 88.2, [CHEST]: 99.0 }),
+        session('b', '2026-09-06T07:45:00.000Z', { [WAIST]: 85.3, [CHEST]: 99.8 }),
+      ),
+    );
+
+    expect(summaryHeadline(summary)).toContain('2 points moved');
+    expect(summaryHeadline(summary)).not.toContain('held steady');
+  });
+
+  it('says plainly when there is nothing to compare', () => {
+    const summary = summariseComparison(
+      compareSessions(
+        session('a', '2026-06-14T07:30:00.000Z', { [THIGH]: 56 }),
+        session('b', '2026-09-06T07:45:00.000Z', { [WAIST]: 85.3 }),
+      ),
+    );
+
+    expect(summaryHeadline(summary)).toContain('nothing to compare');
+  });
+
+  it('handles two sessions on the same day', () => {
+    const summary = summariseComparison(
+      compareSessions(
+        session('morning', '2026-09-06T07:00:00.000Z', { [WAIST]: 85.9 }),
+        session('evening', '2026-09-06T19:00:00.000Z', { [WAIST]: 85.3 }),
+      ),
+    );
+
+    expect(summaryHeadline(summary)).toContain('Between these two sessions');
   });
 });

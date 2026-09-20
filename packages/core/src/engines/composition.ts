@@ -70,6 +70,56 @@ export function netChangeCm(readings: readonly CompositionReading[]): number | u
 }
 
 // ---------------------------------------------------------------------------
+// Direction of change
+// ---------------------------------------------------------------------------
+
+/**
+ * How closely a tape measure repeats on the same body, in centimetres.
+ *
+ * Self-measurement with a tape does not repeat exactly: the tape sits a
+ * centimetre higher, it is pulled a little tighter, the athlete breathes. Half
+ * a centimetre is a conservative floor for that, and it matters because a
+ * difference smaller than it is not a change — it is the same measurement taken
+ * twice. Presenting 0.2 cm as progress teaches an athlete to read noise as
+ * signal, and then to act on it.
+ *
+ * Named and exported so the threshold is one inspectable number rather than a
+ * literal buried in whichever screen happened to need it first.
+ */
+export const TAPE_REPEATABILITY_CM = 0.5;
+
+export type ChangeDirection = 'up' | 'down' | 'steady';
+
+/**
+ * Classify a change, with anything inside the noise floor reported as steady.
+ *
+ * `steady` is a positive statement, not a missing answer: the measurement did
+ * not move by more than the tape can resolve. It is distinct from having no
+ * change to report at all, which is `undefined` and never reaches here.
+ */
+export function changeDirection(
+  deltaCm: number,
+  thresholdCm: number = TAPE_REPEATABILITY_CM,
+): ChangeDirection {
+  if (!Number.isFinite(deltaCm) || Math.abs(deltaCm) < thresholdCm) return 'steady';
+  return deltaCm > 0 ? 'up' : 'down';
+}
+
+/**
+ * True when a change is big enough to be worth reporting as one.
+ *
+ * Deliberately no notion of good or bad. A waist coming down and an arm coming
+ * down are not the same news, and nothing in this package knows which the
+ * athlete was training for.
+ */
+export function isMeaningfulChange(
+  deltaCm: number,
+  thresholdCm: number = TAPE_REPEATABILITY_CM,
+): boolean {
+  return changeDirection(deltaCm, thresholdCm) !== 'steady';
+}
+
+// ---------------------------------------------------------------------------
 // Body fat from circumferences
 // ---------------------------------------------------------------------------
 

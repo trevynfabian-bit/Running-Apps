@@ -18,7 +18,7 @@
 import React, { useState } from 'react';
 import { View } from 'react-native';
 
-import { formatCanonicalLength, formatSignedLength } from '@running/core';
+import { TAPE_REPEATABILITY_CM, formatCanonicalLength, formatSignedLength } from '@running/core';
 
 import { useCompositionSessions } from '../../src/lib/composition-session-store';
 import { useMeasurementUnit } from '../../src/lib/measurement-units';
@@ -31,6 +31,8 @@ import {
   resolveRange,
   selectSlot,
   sessionsInRange,
+  summariseComparison,
+  summaryHeadline,
   totalChangeCm,
   type ComparisonRow,
 } from '../../src/lib/composition-compare';
@@ -120,6 +122,7 @@ export default function CompareScreen(): React.ReactElement {
   const comparison = pair ? compareSessions(pair.earlier, pair.later) : undefined;
   const comparable = comparison ? comparableRows(comparison) : [];
   const photoPairs = comparePhotos(comparison?.earlier, comparison?.later);
+  const summary = comparison ? summariseComparison(comparison) : undefined;
 
   /**
    * The chart always spans the chosen window, even in two-session mode.
@@ -290,11 +293,14 @@ export default function CompareScreen(): React.ReactElement {
             <SectionHeader title="What changed" />
             <Card>
               <Stack gap={spacing.lg}>
-                <Type variant="body" tone="secondary">
-                  {comparable.length === 0
-                    ? 'These two sessions share no measure point, so there is nothing to compare. Measuring the same points in both is what makes a comparison possible.'
-                    : `${comparable.length} of ${comparison.rows.length} points measured in both sessions.`}
-                </Type>
+                <Stack gap={spacing.xs}>
+                  <Type variant="bodyStrong">{summary ? summaryHeadline(summary) : ''}</Type>
+                  <Type variant="caption" tone="tertiary">
+                    {comparable.length === 0
+                      ? 'Measuring the same points in both sessions is what makes a comparison possible.'
+                      : `${comparable.length} of ${comparison.rows.length} points measured in both sessions. A move smaller than ${TAPE_REPEATABILITY_CM} cm is counted as steady — that is about as closely as a tape repeats.`}
+                  </Type>
+                </Stack>
 
                 {total !== undefined ? (
                   <Stack gap={spacing.xs}>
@@ -313,7 +319,13 @@ export default function CompareScreen(): React.ReactElement {
                   {comparison.rows.map((row, index) => (
                     <React.Fragment key={row.point.id}>
                       {index > 0 ? <Divider /> : null}
-                      <ChangeRow row={row} displayUnit={defaultUnit} />
+                      <ChangeRow
+                        row={row}
+                        displayUnit={defaultUnit}
+                        steady={
+                          summary?.steady.some((entry) => entry.point.id === row.point.id) ?? false
+                        }
+                      />
                     </React.Fragment>
                   ))}
                 </Stack>
@@ -373,9 +385,12 @@ function SessionPicker({
 function ChangeRow({
   row,
   displayUnit,
+  steady,
 }: {
   row: ComparisonRow;
   displayUnit: 'cm' | 'in';
+  /** True when the change is inside what a tape can resolve. */
+  steady: boolean;
 }): React.ReactElement {
   const detail =
     row.changeCm !== undefined
@@ -406,7 +421,7 @@ function ChangeRow({
             {row.point.label}
           </Type>
           <Type variant="caption" tone="tertiary">
-            {detail}
+            {steady ? `${detail} · within measurement noise` : detail}
           </Type>
         </Stack>
         {/* Direction without a verdict: the arrow says which way, the colour

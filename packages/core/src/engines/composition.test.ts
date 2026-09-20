@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   NAVY_COEFFICIENTS,
+  TAPE_REPEATABILITY_CM,
+  changeDirection,
+  isMeaningfulChange,
   NAVY_STANDARD_ERROR,
   estimateBodyFatNavy,
   netChangeCm,
@@ -254,5 +257,40 @@ describe('estimateBodyFatNavy', () => {
 
   it('is deterministic', () => {
     expect(estimateBodyFatNavy(MALE)).toEqual(estimateBodyFatNavy(MALE));
+  });
+});
+
+describe('changeDirection', () => {
+  it('reports a real move in the direction it went', () => {
+    expect(changeDirection(-2.9)).toBe('down');
+    expect(changeDirection(0.8)).toBe('up');
+  });
+
+  it('calls anything inside the tape noise steady', () => {
+    // A difference smaller than the tape can resolve is the same measurement
+    // taken twice, not progress.
+    expect(changeDirection(0.2)).toBe('steady');
+    expect(changeDirection(-0.4)).toBe('steady');
+    expect(changeDirection(0)).toBe('steady');
+  });
+
+  it('treats the threshold itself as a real change', () => {
+    expect(changeDirection(TAPE_REPEATABILITY_CM)).toBe('up');
+    expect(changeDirection(-TAPE_REPEATABILITY_CM)).toBe('down');
+  });
+
+  it('takes a caller threshold for a site that repeats differently', () => {
+    expect(changeDirection(0.8, 1.0)).toBe('steady');
+    expect(changeDirection(0.8, 0.5)).toBe('up');
+  });
+
+  it('does not call a non-finite delta a direction', () => {
+    expect(changeDirection(Number.NaN)).toBe('steady');
+  });
+
+  it('has a companion predicate that agrees with it', () => {
+    for (const delta of [-3, -0.6, -0.4, 0, 0.4, 0.6, 3]) {
+      expect(isMeaningfulChange(delta)).toBe(changeDirection(delta) !== 'steady');
+    }
   });
 });
