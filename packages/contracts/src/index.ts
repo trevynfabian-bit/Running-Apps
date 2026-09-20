@@ -1042,6 +1042,129 @@ export const bodyFatHistorySchema = z.object({
 });
 export type BodyFatHistoryDto = z.infer<typeof bodyFatHistorySchema>;
 
+// ---------------------------------------------------------------------------
+// Session comparison
+// ---------------------------------------------------------------------------
+
+/**
+ * Which way a measurement went between two sessions.
+ *
+ * `steady` is a positive finding, not a missing answer: the value did not move
+ * by more than a tape can resolve. It is distinct from having no change to
+ * report at all, which shows up as an absent `changeCm` and never as `steady`.
+ */
+export const changeDirectionSchema = z.enum(['up', 'down', 'steady']);
+export type ChangeDirectionDto = z.infer<typeof changeDirectionSchema>;
+
+/**
+ * One measure point across two sessions.
+ *
+ * Three shapes, and the middle one is why this is not just a number: both
+ * sessions measured it and there is a change; only one did, so there is a value
+ * but nothing to compare it against; or neither did. A point measured once must
+ * never come back as a change of zero — an athlete who skipped their thigh in
+ * June would read that as three months of nothing happening.
+ */
+export const comparisonRowSchema = z.object({
+  pointCode: z.string(),
+  pointLabel: z.string(),
+  /** Canonical centimetres in the earlier session, when it measured this. */
+  fromCm: z.number().optional(),
+  toCm: z.number().optional(),
+  /** Present only when both sessions measured the point. */
+  changeCm: z.number().optional(),
+  /** Present only alongside `changeCm`. */
+  direction: changeDirectionSchema.optional(),
+});
+export type ComparisonRowDto = z.infer<typeof comparisonRowSchema>;
+
+/** A session, reduced to what a comparison header needs. */
+export const comparisonSessionSchema = z.object({
+  id: z.string(),
+  capturedAt: isoDateTime,
+  localDate: localDate,
+});
+
+/**
+ * What the comparison found, counted rather than judged.
+ *
+ * Counts an athlete can check against the rows, not adjectives. Nothing here
+ * decides whether a direction is good news: a waist coming down and an arm
+ * coming down are not the same thing, and the server cannot know which the
+ * athlete was training for.
+ */
+export const comparisonSummarySchema = z.object({
+  movedCount: z.number().int().nonnegative(),
+  steadyCount: z.number().int().nonnegative(),
+  /** Points one session has and the other does not. */
+  onlyOneSessionCount: z.number().int().nonnegative(),
+  /** Total across every comparable point. Absent when none are comparable. */
+  totalChangeCm: z.number().optional(),
+  /** The noise floor applied, so "steady" is not a black box. */
+  thresholdCm: z.number(),
+  headline: z.string(),
+});
+export type ComparisonSummaryDto = z.infer<typeof comparisonSummarySchema>;
+
+/**
+ * Two sessions' photos, paired by side.
+ *
+ * All four sides come back whether or not both photos exist. Dropping the ones
+ * that cannot be paired would make a half-photographed session look complete.
+ */
+export const photoPairSchema = z.object({
+  side: photoSideSchema,
+  earlier: compositionPhotoSchema.optional(),
+  later: compositionPhotoSchema.optional(),
+  comparable: z.boolean(),
+});
+export type PhotoPairDto = z.infer<typeof photoPairSchema>;
+
+export const sessionComparisonSchema = z.object({
+  earlier: comparisonSessionSchema,
+  later: comparisonSessionSchema,
+  daysApart: z.number().int().nonnegative(),
+  rows: z.array(comparisonRowSchema),
+  photos: z.array(photoPairSchema),
+  summary: comparisonSummarySchema,
+});
+export type SessionComparisonDto = z.infer<typeof sessionComparisonSchema>;
+
+/**
+ * Which two sessions to compare.
+ *
+ * Either two ids or a window. A window resolves to its widest pair, because
+ * "the last three months" means the span of that window and not the two most
+ * recent sessions that happen to fall inside it.
+ */
+export const compareSessionsQuerySchema = z
+  .object({
+    earlierId: z.string().optional(),
+    laterId: z.string().optional(),
+    /** Window length in days. Omit both this and the ids for all time. */
+    days: z.coerce.number().int().positive().optional(),
+  })
+  .superRefine((data, ctx) => {
+    const hasOne = Boolean(data.earlierId) !== Boolean(data.laterId);
+    if (hasOne) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['earlierId'],
+        message: 'Give both session ids or neither.',
+      });
+    }
+    if (data.earlierId && data.earlierId === data.laterId) {
+      // A session compared against itself is a column of zeroes, which looks
+      // like a finding and is not one.
+      ctx.addIssue({
+        code: 'custom',
+        path: ['laterId'],
+        message: 'Pick two different sessions.',
+      });
+    }
+  });
+export type CompareSessionsQueryDto = z.infer<typeof compareSessionsQuerySchema>;
+
 /**
  * Uniform error envelope. `code` is stable and machine-readable; `message` is
  * athlete-facing and must never contain a stack trace or provider internals.

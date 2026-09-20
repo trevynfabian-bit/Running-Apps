@@ -10,6 +10,11 @@ import { describe, expect, it } from 'vitest';
 
 import {
   CIRCUMFERENCE_BOUNDS,
+  changeDirectionSchema,
+  compareSessionsQuerySchema,
+  comparisonRowSchema,
+  comparisonSummarySchema,
+  photoPairSchema,
   compositionSessionSchema,
   lengthUnitSchema,
   metricHistoryEntrySchema,
@@ -169,5 +174,115 @@ describe('compositionSessionSchema', () => {
 
     expect(compositionSessionSchema.safeParse({ ...base, photos: [] }).success).toBe(false);
     expect(compositionSessionSchema.safeParse({ ...base, measurements: [] }).success).toBe(false);
+  });
+});
+
+describe('comparisonRowSchema', () => {
+  const base = { pointCode: 'waist', pointLabel: 'Waist' };
+
+  it('accepts a point measured in both sessions', () => {
+    const parsed = comparisonRowSchema.parse({
+      ...base,
+      fromCm: 88.2,
+      toCm: 85.3,
+      changeCm: -2.9,
+      direction: 'down',
+    });
+
+    expect(parsed.changeCm).toBeCloseTo(-2.9, 6);
+    expect(parsed.direction).toBe('down');
+  });
+
+  it('accepts a point measured in only one, with no change at all', () => {
+    const parsed = comparisonRowSchema.parse({ ...base, fromCm: 56 });
+
+    // Never a change of zero: that would read as three months of nothing.
+    expect(parsed.changeCm).toBeUndefined();
+    expect(parsed.direction).toBeUndefined();
+  });
+
+  it('accepts a point neither session measured', () => {
+    expect(comparisonRowSchema.parse(base).fromCm).toBeUndefined();
+  });
+
+  it('keeps steady distinct from a missing change', () => {
+    expect(changeDirectionSchema.parse('steady')).toBe('steady');
+    expect(changeDirectionSchema.safeParse('unchanged').success).toBe(false);
+    expect(changeDirectionSchema.safeParse('none').success).toBe(false);
+  });
+});
+
+describe('comparisonSummarySchema', () => {
+  it('counts rather than judging', () => {
+    const parsed = comparisonSummarySchema.parse({
+      movedCount: 2,
+      steadyCount: 1,
+      onlyOneSessionCount: 1,
+      totalChangeCm: -2.1,
+      thresholdCm: 0.5,
+      headline: 'Over 84 days, 2 points moved and 1 held steady.',
+    });
+
+    expect(parsed.headline).not.toMatch(/good|bad|great|poor|progress/i);
+    // The noise floor travels with the summary so "steady" is not a black box.
+    expect(parsed.thresholdCm).toBe(0.5);
+  });
+
+  it('lets the total be absent when nothing is comparable', () => {
+    const parsed = comparisonSummarySchema.parse({
+      movedCount: 0,
+      steadyCount: 0,
+      onlyOneSessionCount: 3,
+      thresholdCm: 0.5,
+      headline: 'Nothing to compare.',
+    });
+
+    // Zero would suggest it found nothing rather than that it could not look.
+    expect(parsed.totalChangeCm).toBeUndefined();
+  });
+});
+
+describe('photoPairSchema', () => {
+  it('keeps a side only one session has', () => {
+    const parsed = photoPairSchema.parse({ side: 'back', comparable: false });
+
+    // Dropping it would make a half-photographed session look complete.
+    expect(parsed.earlier).toBeUndefined();
+    expect(parsed.comparable).toBe(false);
+  });
+});
+
+describe('compareSessionsQuerySchema', () => {
+  it('accepts two ids', () => {
+    expect(compareSessionsQuerySchema.safeParse({ earlierId: 'a', laterId: 'b' }).success).toBe(
+      true,
+    );
+  });
+
+  it('accepts a window on its own', () => {
+    expect(compareSessionsQuerySchema.parse({ days: '91' }).days).toBe(91);
+  });
+
+  it('accepts neither, meaning all time', () => {
+    expect(compareSessionsQuerySchema.safeParse({}).success).toBe(true);
+  });
+
+  it('refuses one id without the other', () => {
+    expect(compareSessionsQuerySchema.safeParse({ earlierId: 'a' }).success).toBe(false);
+    expect(compareSessionsQuerySchema.safeParse({ laterId: 'b' }).success).toBe(false);
+  });
+
+  it('refuses a session compared against itself', () => {
+    // A column of zeroes looks like a finding and is not one.
+    const result = compareSessionsQuerySchema.safeParse({ earlierId: 'a', laterId: 'a' });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain('two different');
+  });
+
+  it('refuses a window that is not a positive whole number of days', () => {
+    expect(compareSessionsQuerySchema.safeParse({ days: '0' }).success).toBe(false);
+    expect(compareSessionsQuerySchema.safeParse({ days: '-7' }).success).toBe(false);
+    expect(compareSessionsQuerySchema.safeParse({ days: 'soon' }).success).toBe(false);
   });
 });
