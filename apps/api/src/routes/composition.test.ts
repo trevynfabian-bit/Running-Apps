@@ -1278,3 +1278,116 @@ describe('GET /api/composition/body-fat/history', () => {
     expect((await app.request('/api/composition/body-fat/history')).status).toBe(401);
   });
 });
+
+describe('GET /api/composition/sessions/options', () => {
+  let optionsToken: string;
+  let fullId: string;
+  let photosOnlyId: string;
+
+  beforeAll(async () => {
+    const signUp = await app.request('/api/auth/signup', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: 'options@example.test',
+        password: 'a-long-enough-password',
+        displayName: 'Options',
+      }),
+    });
+    optionsToken = ((await signUp.json()) as { token: string }).token;
+
+    const create = async (capturedAt: string): Promise<string> => {
+      const created = (await (
+        await app.request('/api/composition/sessions', {
+          method: 'POST',
+          headers: { authorization: `Bearer ${optionsToken}` },
+          body: sessionForm({}, { capturedAt }),
+        })
+      ).json()) as { id: string };
+      return created.id;
+    };
+
+    photosOnlyId = await create('2026-06-14T07:30:00.000Z');
+    fullId = await create('2026-09-06T07:45:00.000Z');
+
+    await app.request(`/api/composition/sessions/${fullId}/measurements`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${optionsToken}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        measurements: [
+          { pointCode: 'waist', value: 86.4 },
+          { pointCode: 'neck', value: 38.1 },
+          { pointCode: 'chest', value: 99.2 },
+        ],
+      }),
+    });
+  }, 60_000);
+
+  async function options(query = '', auth = optionsToken): Promise<Response> {
+    return app.request(`/api/composition/sessions/options${query}`, {
+      headers: { authorization: `Bearer ${auth}` },
+    });
+  }
+
+  it('counts photos and measurements without multiplying them together', async () => {
+    const body = (await (await options()).json()) as {
+      sessions: { id: string; photoCount: number; measurementCount: number }[];
+    };
+    const full = body.sessions.find((session) => session.id === fullId);
+
+    // Joining two one-to-many tables in one statement would report 12 of each
+    // for four photos and three measurements.
+    expect(full?.photoCount).toBe(4);
+    expect(full?.measurementCount).toBe(3);
+  });
+
+  it('returns sessions newest first', async () => {
+    const body = (await (await options()).json()) as { sessions: { id: string }[] };
+
+    expect(body.sessions[0]?.id).toBe(fullId);
+    expect(body.sessions[1]?.id).toBe(photosOnlyId);
+  });
+
+  it('counts a session with photos but no measurements correctly', async () => {
+    const body = (await (await options()).json()) as {
+      sessions: { id: string; photoCount: number; measurementCount: number; comparable: boolean }[];
+    };
+    const photosOnly = body.sessions.find((session) => session.id === photosOnlyId);
+
+    expect(photosOnly?.photoCount).toBe(4);
+    expect(photosOnly?.measurementCount).toBe(0);
+    // Photos alone still make a visual comparison possible.
+    expect(photosOnly?.comparable).toBe(true);
+  });
+
+  it('carries no photo or measurement records, only counts', async () => {
+    const body = (await (await options()).json()) as { sessions: Record<string, unknown>[] };
+
+    // A picker showing ten sessions should not fetch forty photo records.
+    for (const session of body.sessions) {
+      expect(session).not.toHaveProperty('photos');
+      expect(session).not.toHaveProperty('measurements');
+    }
+  });
+
+  it('honours a limit and clamps a silly one', async () => {
+    const one = (await (await options('?limit=1')).json()) as { sessions: unknown[] };
+    expect(one.sessions).toHaveLength(1);
+
+    const zero = (await (await options('?limit=0')).json()) as { sessions: unknown[] };
+    expect(zero.sessions).toHaveLength(1);
+
+    const nonsense = (await (await options('?limit=banana')).json()) as { sessions: unknown[] };
+    expect(nonsense.sessions.length).toBeGreaterThan(0);
+  });
+
+  it('never shows one athlete the sessions of another', async () => {
+    const theirs = (await (await options('', token)).json()) as { sessions: { id: string }[] };
+
+    expect(theirs.sessions.some((session) => session.id === fullId)).toBe(false);
+  });
+
+  it('requires a signed-in athlete', async () => {
+    expect((await app.request('/api/composition/sessions/options')).status).toBe(401);
+  });
+});

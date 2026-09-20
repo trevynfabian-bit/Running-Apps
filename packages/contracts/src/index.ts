@@ -1131,6 +1131,30 @@ export const sessionComparisonSchema = z.object({
 export type SessionComparisonDto = z.infer<typeof sessionComparisonSchema>;
 
 /**
+ * A session as the comparison picker needs it.
+ *
+ * Counts rather than contents: a picker showing ten sessions does not need
+ * forty photo records and sixty measurements to render ten rows, and asking
+ * for them would make opening the picker the most expensive thing on the
+ * screen.
+ *
+ * `comparable` is false for a session with nothing recorded in it. Offering it
+ * as a choice would let an athlete pick a pair that can produce no comparison,
+ * and then wonder why the screen is empty.
+ */
+export const comparisonOptionSchema = z.object({
+  id: z.string(),
+  capturedAt: isoDateTime,
+  localDate: localDate,
+  note: z.string().optional(),
+  photoCount: z.number().int().nonnegative(),
+  measurementCount: z.number().int().nonnegative(),
+  estimateCount: z.number().int().nonnegative(),
+  comparable: z.boolean(),
+});
+export type ComparisonOptionDto = z.infer<typeof comparisonOptionSchema>;
+
+/**
  * Which two sessions to compare.
  *
  * Either two ids or a window. A window resolves to its widest pair, because

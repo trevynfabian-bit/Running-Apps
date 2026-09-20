@@ -14,7 +14,7 @@
  */
 
 import { Hono } from 'hono';
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 
 import {
   PHOTO_SIDES,
@@ -24,6 +24,7 @@ import {
   recordMeasurementsSchema,
   type BodyFatEstimateDto,
   type BodyFatHistoryDto,
+  type ComparisonOptionDto,
   type MetricHistoryDto,
   type CompositionMeasurementDto,
   type CompositionPhotoDto,
@@ -1037,4 +1038,86 @@ compositionRoutes.get('/body-fat/history', async (c) => {
   };
 
   return c.json(body);
+});
+
+// ---------------------------------------------------------------------------
+// Comparison
+// ---------------------------------------------------------------------------
+
+/**
+ * Sessions an athlete can pick between, newest first.
+ *
+ * Counts rather than contents. A picker showing ten sessions does not need
+ * forty photo records and sixty measurements to render ten rows, and asking for
+ * them would make opening the picker the most expensive thing on the screen.
+ *
+ * The counts come from three separate grouped queries rather than one join.
+ * Joining two one-to-many tables in a single statement multiplies their rows
+ * against each other — a session with four photos and six measurements would
+ * report twenty-four of each — and that is the kind of wrong number nothing
+ * downstream can detect.
+ */
+compositionRoutes.get('/sessions/options', async (c) => {
+  const athleteId = c.get('athleteId');
+
+  const requested = Number(c.req.query('limit') ?? 50);
+  const limit = Number.isFinite(requested) ? Math.min(Math.max(Math.trunc(requested), 1), 200) : 50;
+
+  const { db } = await getDb();
+
+  const sessions = await db
+    .select()
+    .from(bodyCompositionSessions)
+    .where(eq(bodyCompositionSessions.athleteId, athleteId))
+    .orderBy(desc(bodyCompositionSessions.capturedAt))
+    .limit(limit);
+
+  if (sessions.length === 0) return c.json({ sessions: [] });
+
+  const ids = sessions.map((session) => session.id);
+
+  const [photoCounts, measurementCounts, estimateCounts] = await Promise.all([
+    db
+      .select({ sessionId: compositionPhotos.sessionId, count: count() })
+      .from(compositionPhotos)
+      .where(inArray(compositionPhotos.sessionId, ids))
+      .groupBy(compositionPhotos.sessionId),
+    db
+      .select({ sessionId: compositionMeasurements.sessionId, count: count() })
+      .from(compositionMeasurements)
+      .where(inArray(compositionMeasurements.sessionId, ids))
+      .groupBy(compositionMeasurements.sessionId),
+    db
+      .select({ sessionId: bodyFatEstimates.sessionId, count: count() })
+      .from(bodyFatEstimates)
+      .where(inArray(bodyFatEstimates.sessionId, ids))
+      .groupBy(bodyFatEstimates.sessionId),
+  ]);
+
+  const tally = (rows: { sessionId: string; count: number }[]): Map<string, number> =>
+    new Map(rows.map((row) => [row.sessionId, row.count]));
+
+  const photos = tally(photoCounts);
+  const measurements = tally(measurementCounts);
+  const estimates = tally(estimateCounts);
+
+  const options: ComparisonOptionDto[] = sessions.map((session) => {
+    const photoCount = photos.get(session.id) ?? 0;
+    const measurementCount = measurements.get(session.id) ?? 0;
+
+    return {
+      id: session.id,
+      capturedAt: session.capturedAt.toISOString(),
+      localDate: session.localDate,
+      ...(session.note ? { note: session.note } : {}),
+      photoCount,
+      measurementCount,
+      estimateCount: estimates.get(session.id) ?? 0,
+      // An empty session offered as a choice lets an athlete pick a pair that
+      // can produce no comparison, and then wonder why the screen is blank.
+      comparable: photoCount > 0 || measurementCount > 0,
+    };
+  });
+
+  return c.json({ sessions: options });
 });
