@@ -27,6 +27,7 @@ import {
   type BodyFatHistoryDto,
   type ComparisonOptionDto,
   type PhotoPairDto,
+  type SessionComparisonDto,
   type TrendSeriesDto,
   type MetricHistoryDto,
   type CompositionMeasurementDto,
@@ -36,6 +37,8 @@ import {
   type PhotoSideDto,
 } from '@running/contracts';
 import {
+  TAPE_REPEATABILITY_CM,
+  changeDirection,
   estimateBodyFat,
   withChanges as withChangesCore,
   toCanonicalLength,
@@ -1446,3 +1449,154 @@ compositionRoutes.get('/trend', async (c) => {
 
   return c.json(body);
 });
+
+/**
+ * Everything that changed between two sessions.
+ *
+ * The rule this endpoint exists to get right: a point measured in one session
+ * and not the other has **no** change. Not zero. An athlete who skipped their
+ * thigh in June would read a zero in September as three months of nothing
+ * happening, and no amount of UI can undo a number the server asserted.
+ *
+ * The second rule: a move smaller than a tape can repeat is reported as steady,
+ * which is a finding, rather than as a direction, which would be a fiction. The
+ * threshold travels in the response so the word is not a black box.
+ *
+ * Nothing here judges a direction. A waist coming down and an arm coming down
+ * are not the same news, and the server cannot know which the athlete trained
+ * for — so the summary counts and the rows point, and neither approves.
+ */
+compositionRoutes.get('/compare', async (c) => {
+  const athleteId = c.get('athleteId');
+
+  const parsed = compareSessionsQuerySchema.safeParse({
+    earlierId: c.req.query('earlierId'),
+    laterId: c.req.query('laterId'),
+    ...(c.req.query('days') !== undefined ? { days: c.req.query('days') } : {}),
+  });
+  if (!parsed.success) {
+    throw badRequest(parsed.error.issues[0]?.message ?? 'Those sessions were not valid.');
+  }
+
+  const { db } = await getDb();
+  const pair = await resolveComparisonPair(db, athleteId, parsed.data);
+
+  const points = await db
+    .select()
+    .from(circumferencePoints)
+    .orderBy(asc(circumferencePoints.sortOrder));
+
+  const measurements = await db
+    .select({
+      sessionId: compositionMeasurements.sessionId,
+      pointId: compositionMeasurements.pointId,
+      valueCm: compositionMeasurements.valueCm,
+    })
+    .from(compositionMeasurements)
+    .where(inArray(compositionMeasurements.sessionId, [pair.earlier.id, pair.later.id]));
+
+  const valueFor = (sessionId: string, pointId: string): number | undefined =>
+    measurements.find((row) => row.sessionId === sessionId && row.pointId === pointId)?.valueCm;
+
+  let movedCount = 0;
+  let steadyCount = 0;
+  let onlyOneSessionCount = 0;
+  let total = 0;
+  let comparable = 0;
+
+  const rows: SessionComparisonDto['rows'] = points.map((point) => {
+    const fromCm = valueFor(pair.earlier.id, point.id);
+    const toCm = valueFor(pair.later.id, point.id);
+
+    if (fromCm === undefined || toCm === undefined) {
+      if (fromCm !== undefined || toCm !== undefined) onlyOneSessionCount += 1;
+      return {
+        pointCode: point.code,
+        pointLabel: point.label,
+        ...(fromCm !== undefined ? { fromCm } : {}),
+        ...(toCm !== undefined ? { toCm } : {}),
+      };
+    }
+
+    const changeCm = toCm - fromCm;
+    const direction = changeDirection(changeCm);
+
+    if (direction === 'steady') steadyCount += 1;
+    else movedCount += 1;
+
+    comparable += 1;
+    total += changeCm;
+
+    return { pointCode: point.code, pointLabel: point.label, fromCm, toCm, changeCm, direction };
+  });
+
+  const photoRows = await db
+    .select()
+    .from(compositionPhotos)
+    .where(inArray(compositionPhotos.sessionId, [pair.earlier.id, pair.later.id]));
+
+  const photos: PhotoPairDto[] = PHOTO_SIDES.map((side) => {
+    const earlier = photoRows.find((p) => p.sessionId === pair.earlier.id && p.side === side);
+    const later = photoRows.find((p) => p.sessionId === pair.later.id && p.side === side);
+
+    return {
+      side,
+      ...(earlier ? { earlier: toPhotoDto(earlier) } : {}),
+      ...(later ? { later: toPhotoDto(later) } : {}),
+      comparable: earlier !== undefined && later !== undefined,
+    };
+  });
+
+  const daysApart = Math.floor(
+    Math.abs(pair.later.capturedAt.getTime() - pair.earlier.capturedAt.getTime()) / 86_400_000,
+  );
+
+  const body: SessionComparisonDto = {
+    earlier: {
+      id: pair.earlier.id,
+      capturedAt: pair.earlier.capturedAt.toISOString(),
+      localDate: pair.earlier.localDate,
+    },
+    later: {
+      id: pair.later.id,
+      capturedAt: pair.later.capturedAt.toISOString(),
+      localDate: pair.later.localDate,
+    },
+    daysApart,
+    rows,
+    photos,
+    summary: {
+      movedCount,
+      steadyCount,
+      onlyOneSessionCount,
+      // Absent when nothing is comparable: zero would suggest it found nothing
+      // rather than that it could not look.
+      ...(comparable > 0 ? { totalChangeCm: Number(total.toFixed(2)) } : {}),
+      thresholdCm: TAPE_REPEATABILITY_CM,
+      headline: comparisonHeadline(daysApart, movedCount, steadyCount),
+    },
+  };
+
+  return c.json(body);
+});
+
+/**
+ * One sentence about the comparison.
+ *
+ * Counts, not adjectives. "Two points moved and one held steady" is something
+ * the athlete can check against the rows beneath it; "good progress" is a
+ * verdict this server has no standing to give.
+ */
+function comparisonHeadline(daysApart: number, moved: number, steady: number): string {
+  const span = daysApart === 0 ? 'Between these two sessions' : `Over ${daysApart} days`;
+
+  if (moved === 0 && steady === 0) {
+    return `${span}, no measure point was recorded in both sessions, so there is nothing to compare.`;
+  }
+
+  const parts: string[] = [];
+  if (moved > 0) parts.push(`${moved} ${moved === 1 ? 'point' : 'points'} moved`);
+  if (steady > 0) parts.push(`${steady} held steady`);
+
+  return `${span}, ${parts.join(' and ')}.`;
+}

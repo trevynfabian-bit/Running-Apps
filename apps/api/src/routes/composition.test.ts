@@ -1705,3 +1705,157 @@ describe('GET /api/composition/trend', () => {
     expect((await app.request('/api/composition/trend?metric=weight')).status).toBe(401);
   });
 });
+
+describe('GET /api/composition/compare', () => {
+  let compareToken: string;
+  let beforeId: string;
+  let afterId: string;
+
+  beforeAll(async () => {
+    const signUp = await app.request('/api/auth/signup', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: 'compare@example.test',
+        password: 'a-long-enough-password',
+        displayName: 'Compare',
+      }),
+    });
+    compareToken = ((await signUp.json()) as { token: string }).token;
+
+    const create = async (
+      capturedAt: string,
+      measurements: Record<string, number>,
+    ): Promise<string> => {
+      const created = (await (
+        await app.request('/api/composition/sessions', {
+          method: 'POST',
+          headers: { authorization: `Bearer ${compareToken}` },
+          body: sessionForm({}, { capturedAt }),
+        })
+      ).json()) as { id: string };
+
+      await app.request(`/api/composition/sessions/${created.id}/measurements`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${compareToken}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          measurements: Object.entries(measurements).map(([pointCode, value]) => ({
+            pointCode,
+            value,
+          })),
+        }),
+      });
+
+      return created.id;
+    };
+
+    beforeId = await create('2026-06-14T07:30:00.000Z', {
+      waist: 88.2,
+      chest: 99.0,
+      neck: 38.4,
+      thigh: 56.0,
+    });
+    afterId = await create('2026-09-06T07:45:00.000Z', {
+      waist: 85.3, // moved, −2.9
+      chest: 99.8, // moved, +0.8
+      neck: 38.2, // steady, −0.2 is inside the tape noise
+    });
+  }, 60_000);
+
+  async function compare(query: string, auth = compareToken): Promise<Response> {
+    return app.request(`/api/composition/compare?${query}`, {
+      headers: { authorization: `Bearer ${auth}` },
+    });
+  }
+
+  it('never reports a half-measured point as a change of zero', async () => {
+    const body = (await (await compare(`earlierId=${beforeId}&laterId=${afterId}`)).json()) as {
+      rows: { pointCode: string; fromCm?: number; toCm?: number; changeCm?: number }[];
+    };
+    const thigh = body.rows.find((row) => row.pointCode === 'thigh');
+
+    // September skipped the thigh. A zero here would assert three months of
+    // nothing happening, and no UI can undo a number the server stated.
+    expect(thigh?.fromCm).toBeCloseTo(56, 6);
+    expect(thigh?.toCm).toBeUndefined();
+    expect(thigh?.changeCm).toBeUndefined();
+    expect('changeCm' in thigh!).toBe(false);
+  });
+
+  it('separates a real move from the tape repeating itself', async () => {
+    const body = (await (await compare(`earlierId=${beforeId}&laterId=${afterId}`)).json()) as {
+      rows: { pointCode: string; direction?: string }[];
+      summary: { movedCount: number; steadyCount: number; thresholdCm: number };
+    };
+
+    expect(body.rows.find((row) => row.pointCode === 'waist')?.direction).toBe('down');
+    expect(body.rows.find((row) => row.pointCode === 'chest')?.direction).toBe('up');
+    // 0.2 cm is the same measurement taken twice.
+    expect(body.rows.find((row) => row.pointCode === 'neck')?.direction).toBe('steady');
+
+    expect(body.summary.movedCount).toBe(2);
+    expect(body.summary.steadyCount).toBe(1);
+    // The threshold travels so "steady" is not a black box.
+    expect(body.summary.thresholdCm).toBe(0.5);
+  });
+
+  it('counts rather than judging', async () => {
+    const body = (await (await compare(`earlierId=${beforeId}&laterId=${afterId}`)).json()) as {
+      summary: { headline: string; onlyOneSessionCount: number };
+    };
+
+    expect(body.summary.headline).toBe('Over 84 days, 2 points moved and 1 held steady.');
+    expect(body.summary.headline).not.toMatch(/good|bad|great|poor|progress|improve/i);
+    expect(body.summary.onlyOneSessionCount).toBe(1);
+  });
+
+  it('totals only what it could compare', async () => {
+    const body = (await (await compare(`earlierId=${beforeId}&laterId=${afterId}`)).json()) as {
+      summary: { totalChangeCm?: number };
+    };
+
+    // Waist −2.9, chest +0.8, neck −0.2. The thigh is not in it.
+    expect(body.summary.totalChangeCm).toBeCloseTo(-2.3, 2);
+  });
+
+  it('lists every measure point, including ones neither session recorded', async () => {
+    const body = (await (await compare(`earlierId=${beforeId}&laterId=${afterId}`)).json()) as {
+      rows: { pointCode: string }[];
+    };
+
+    // A gap has to read as a gap.
+    expect(body.rows.length).toBeGreaterThan(4);
+    expect(body.rows.map((row) => row.pointCode)).toContain('hips');
+  });
+
+  it('pairs the photos alongside the numbers', async () => {
+    const body = (await (await compare(`earlierId=${beforeId}&laterId=${afterId}`)).json()) as {
+      photos: { side: string; comparable: boolean }[];
+    };
+
+    expect(body.photos.map((pair) => pair.side)).toEqual(['front', 'back', 'left', 'right']);
+    expect(body.photos.every((pair) => pair.comparable)).toBe(true);
+  });
+
+  it('orders the pair by date whichever way the ids were given', async () => {
+    const body = (await (await compare(`earlierId=${afterId}&laterId=${beforeId}`)).json()) as {
+      earlier: { id: string };
+      daysApart: number;
+    };
+
+    expect(body.earlier.id).toBe(beforeId);
+    expect(body.daysApart).toBe(84);
+  });
+
+  it('refuses a session compared against itself', async () => {
+    expect((await compare(`earlierId=${beforeId}&laterId=${beforeId}`)).status).toBe(400);
+  });
+
+  it('reports another athlete session as not found', async () => {
+    expect((await compare(`earlierId=${beforeId}&laterId=${afterId}`, token)).status).toBe(404);
+  });
+
+  it('requires a signed-in athlete', async () => {
+    expect((await app.request('/api/composition/compare')).status).toBe(401);
+  });
+});
