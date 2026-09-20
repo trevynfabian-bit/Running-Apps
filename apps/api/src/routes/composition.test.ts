@@ -6,18 +6,24 @@
  * genuinely exercised.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import type { Hono } from 'hono';
 
 import { loadEnv, setEnvForTesting } from '../env.js';
 import { getDb, resetDbForTesting, type Database } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
 import { resetProviderRegistry } from '../providers/registry.js';
-import { bodyCompositionSessions, compositionPhotos } from '../db/schema.js';
+import {
+  auditLogs,
+  bodyCompositionSessions,
+  bodyFatEstimates,
+  compositionMeasurements,
+  compositionPhotos,
+} from '../db/schema.js';
 import { photoStorage, resetPhotoStorageForTesting } from '../services/photo-storage.js';
 
 const DATA_DIR = 'memory://running-os-composition-routes';
@@ -1857,5 +1863,222 @@ describe('GET /api/composition/compare', () => {
 
   it('requires a signed-in athlete', async () => {
     expect((await app.request('/api/composition/compare')).status).toBe(401);
+  });
+});
+
+describe('DELETE /api/composition/sessions/:id', () => {
+  /** A session with four photos, two circumferences and a body fat estimate. */
+  async function furnished(): Promise<string> {
+    const created = (await (await post(sessionForm())).json()) as { id: string };
+
+    await app.request(`/api/composition/sessions/${created.id}/measurements`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        measurements: [
+          { pointCode: 'waist', value: 86.4 },
+          { pointCode: 'neck', value: 38.1 },
+        ],
+      }),
+    });
+
+    await app.request(`/api/composition/sessions/${created.id}/body-fat`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        method: 'navy',
+        variant: 'male',
+        height: { value: 178, unit: 'cm' },
+      }),
+    });
+
+    return created.id;
+  }
+
+  const destroy = async (sessionId: string, auth = token): Promise<Response> =>
+    app.request(`/api/composition/sessions/${sessionId}`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${auth}` },
+    });
+
+  it('takes the photos, the measurements and the estimate together', async () => {
+    const sessionId = await furnished();
+
+    const response = await destroy(sessionId);
+    expect(response.status).toBe(200);
+
+    const body = (await response.json()) as {
+      ok: boolean;
+      deleted: { sessionId: string; photos: number; measurements: number; estimates: number };
+    };
+
+    expect(body.deleted).toEqual({ sessionId, photos: 4, measurements: 2, estimates: 1 });
+
+    // Not "the row is gone and the children are probably gone too" — each one
+    // is checked, because the cascade is the only thing removing them.
+    expect(
+      await db.select().from(bodyCompositionSessions).where(eq(bodyCompositionSessions.id, sessionId)),
+    ).toHaveLength(0);
+    expect(
+      await db.select().from(compositionPhotos).where(eq(compositionPhotos.sessionId, sessionId)),
+    ).toHaveLength(0);
+    expect(
+      await db
+        .select()
+        .from(compositionMeasurements)
+        .where(eq(compositionMeasurements.sessionId, sessionId)),
+    ).toHaveLength(0);
+    expect(
+      await db.select().from(bodyFatEstimates).where(eq(bodyFatEstimates.sessionId, sessionId)),
+    ).toHaveLength(0);
+  });
+
+  it('removes the bytes from disk, not only the rows', async () => {
+    const sessionId = await furnished();
+
+    const rows = await db
+      .select()
+      .from(compositionPhotos)
+      .where(eq(compositionPhotos.sessionId, sessionId));
+    expect(rows).toHaveLength(4);
+
+    await destroy(sessionId);
+
+    // Rows without files would still be a privacy failure the other way round:
+    // a photograph nobody can see is a photograph that is still there.
+    for (const row of rows) {
+      await expect(photoStorage().read(row.storageKey)).resolves.toBeUndefined();
+    }
+  });
+
+  it('leaves the athlete other sessions alone', async () => {
+    const keep = await furnished();
+    const drop = await furnished();
+
+    await destroy(drop);
+
+    const listed = (await (await list()).json()) as {
+      sessions: { id: string; photos: unknown[]; measurements: unknown[] }[];
+    };
+
+    expect(listed.sessions.map((session) => session.id)).toContain(keep);
+    expect(listed.sessions.map((session) => session.id)).not.toContain(drop);
+    expect(listed.sessions.find((session) => session.id === keep)?.photos).toHaveLength(4);
+  });
+
+  it('reports another athlete session as not found, and deletes nothing', async () => {
+    const mine = await furnished();
+
+    const signUp = await app.request('/api/auth/signup', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: 'deleter@example.test',
+        password: 'a-long-enough-password',
+        displayName: 'Deleter',
+      }),
+    });
+    const intruder = ((await signUp.json()) as { token: string }).token;
+
+    expect((await destroy(mine, intruder)).status).toBe(404);
+
+    // 403 would confirm the id is real. And the session has to survive: an
+    // endpoint that deletes before it checks ownership is a way to wipe
+    // somebody else's photos by guessing.
+    const rows = await db
+      .select()
+      .from(compositionPhotos)
+      .where(eq(compositionPhotos.sessionId, mine));
+    expect(rows).toHaveLength(4);
+    await expect(photoStorage().read(rows[0]!.storageKey)).resolves.toBeDefined();
+  });
+
+  it('reports a session that is already gone as not found', async () => {
+    const sessionId = await furnished();
+    expect((await destroy(sessionId)).status).toBe(200);
+    expect((await destroy(sessionId)).status).toBe(404);
+  });
+
+  it('requires a signed-in athlete', async () => {
+    const sessionId = await furnished();
+
+    expect(
+      (await app.request(`/api/composition/sessions/${sessionId}`, { method: 'DELETE' })).status,
+    ).toBe(401);
+
+    expect(
+      await db.select().from(compositionPhotos).where(eq(compositionPhotos.sessionId, sessionId)),
+    ).toHaveLength(4);
+  });
+
+  it('keeps the session whole when the photos cannot be removed', async () => {
+    const sessionId = await furnished();
+
+    const storage = photoStorage();
+    const failing = vi
+      .spyOn(storage, 'removeSession')
+      .mockRejectedValueOnce(new Error('disk is read-only'));
+
+    // Deleting the row first would have left four photographs on disk that
+    // nothing points at, and no way for the athlete to ask again.
+    expect((await destroy(sessionId)).status).toBe(500);
+    expect(failing).toHaveBeenCalledOnce();
+
+    const rows = await db
+      .select()
+      .from(compositionPhotos)
+      .where(eq(compositionPhotos.sessionId, sessionId));
+    expect(rows).toHaveLength(4);
+    await expect(photoStorage().read(rows[0]!.storageKey)).resolves.toBeDefined();
+
+    failing.mockRestore();
+
+    // And the retry works.
+    expect((await destroy(sessionId)).status).toBe(200);
+  });
+
+  it('records what happened without recording any of the body data', async () => {
+    const sessionId = await furnished();
+    await destroy(sessionId);
+
+    const [entry] = await db
+      .select()
+      .from(auditLogs)
+      .where(eq(auditLogs.action, 'composition.session_deleted'))
+      .orderBy(desc(auditLogs.createdAt))
+      .limit(1);
+
+    expect(entry?.metadata).toMatchObject({ sessionId, photos: 4, measurements: 2, estimates: 1 });
+
+    // An audit log holding the measurements would keep exactly what the
+    // athlete just asked to be rid of.
+    expect(JSON.stringify(entry?.metadata)).not.toContain('86.4');
+    expect(JSON.stringify(entry?.metadata)).not.toContain('38.1');
+  });
+
+  it('drops the session from every read path that offered it', async () => {
+    const sessionId = await furnished();
+    await destroy(sessionId);
+
+    const options = (await (
+      await app.request('/api/composition/sessions/options', {
+        headers: { authorization: `Bearer ${token}` },
+      })
+    ).json()) as { sessions: { id: string }[] };
+    expect(options.sessions.map((session) => session.id)).not.toContain(sessionId);
+
+    const history = (await (
+      await app.request('/api/composition/points/waist/history', {
+        headers: { authorization: `Bearer ${token}` },
+      })
+    ).json()) as { entries: { sessionId: string }[] };
+    expect(history.entries.map((entry) => entry.sessionId)).not.toContain(sessionId);
+
+    const estimates = (await (
+      await app.request('/api/composition/body-fat/history', {
+        headers: { authorization: `Bearer ${token}` },
+      })
+    ).json()) as { entries: { sessionId: string }[] };
+    expect(estimates.entries.map((estimate) => estimate.sessionId)).not.toContain(sessionId);
   });
 });

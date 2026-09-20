@@ -14,7 +14,7 @@
  */
 
 import { Hono } from 'hono';
-import { and, asc, count, desc, eq, gte, inArray, sql } from 'drizzle-orm';
+import { and, asc, count, countDistinct, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 
 import {
   PHOTO_SIDES,
@@ -52,6 +52,7 @@ import { toLocalDate } from '@running/core';
 import { getDb } from '../db/client.js';
 import {
   athleteProfiles,
+  auditLogs,
   bodyCompositionSessions,
   bodyFatEstimates,
   bodyMeasurements,
@@ -374,6 +375,103 @@ compositionRoutes.get('/sessions', async (c) => {
         measurementsBySession.get(session.id) ?? [],
       ),
     ),
+  });
+});
+
+/**
+ * Discard one session: the photographs, the circumferences, and any body fat
+ * estimate worked out from them.
+ *
+ * The files go before the row, and the order is the whole design.
+ *
+ * Delete the row first and a failure part-way leaves photographs on disk that
+ * nothing points at any more. The athlete asked for them to be gone, believes
+ * they are gone, and can never ask again — the session they would have to name
+ * no longer exists. That is unrecoverable, and it is exactly the failure this
+ * feature exists to prevent.
+ *
+ * Delete the files first and the same failure leaves a session whose photos
+ * 404. That is visibly wrong, the athlete can press delete again, and the
+ * second attempt succeeds. A recoverable failure is the one to choose.
+ *
+ * Files are removed by session prefix rather than by walking the photo rows,
+ * so anything written for a side whose row never landed goes too.
+ *
+ * The measurements and the estimate are not deleted here at all: they go with
+ * the session row through `onDelete: 'cascade'`, in the same statement, rather
+ * than through cleanup code that might not run.
+ */
+compositionRoutes.delete('/sessions/:sessionId', async (c) => {
+  const athleteId = c.get('athleteId');
+  const sessionId = c.req.param('sessionId');
+
+  const { db } = await getDb();
+  await ownedSession(db, athleteId, sessionId);
+
+  // Counted before the delete, because the cascade takes them silently and
+  // `returning()` reports only the session row. What is being reported back is
+  // what the athlete just lost.
+  const [counts] = await db
+    .select({
+      photos: countDistinct(compositionPhotos.id),
+      measurements: countDistinct(compositionMeasurements.id),
+      estimates: countDistinct(bodyFatEstimates.id),
+    })
+    .from(bodyCompositionSessions)
+    .leftJoin(compositionPhotos, eq(compositionPhotos.sessionId, bodyCompositionSessions.id))
+    .leftJoin(
+      compositionMeasurements,
+      eq(compositionMeasurements.sessionId, bodyCompositionSessions.id),
+    )
+    .leftJoin(bodyFatEstimates, eq(bodyFatEstimates.sessionId, bodyCompositionSessions.id))
+    .where(eq(bodyCompositionSessions.id, sessionId));
+
+  // Not caught: if the photographs cannot be removed, the session stays whole
+  // and the athlete gets an error they can act on. Swallowing this would
+  // report a deletion that did not happen.
+  const filesRemoved = await photoStorage().removeSession(athleteId, sessionId);
+
+  const [deleted] = await db
+    .delete(bodyCompositionSessions)
+    .where(
+      and(eq(bodyCompositionSessions.id, sessionId), eq(bodyCompositionSessions.athleteId, athleteId)),
+    )
+    .returning();
+
+  if (!deleted) {
+    // The row went between the ownership check and here — a second delete
+    // racing this one. Its photos are gone either way, which is the outcome
+    // both callers asked for.
+    logger.warn('composition.session_already_deleted', { sessionId, filesRemoved });
+    throw notFound('Session');
+  }
+
+  await db.insert(auditLogs).values({
+    userId: c.get('userId'),
+    athleteId,
+    action: 'composition.session_deleted',
+    resource: 'body_composition_session',
+    // Counts only. An audit log that recorded the measurements would keep the
+    // body data the athlete just asked to be rid of.
+    metadata: {
+      sessionId,
+      photos: counts?.photos ?? 0,
+      measurements: counts?.measurements ?? 0,
+      estimates: counts?.estimates ?? 0,
+      filesRemoved,
+    },
+  });
+
+  logger.info('composition.session_deleted', { sessionId, filesRemoved });
+
+  return c.json({
+    ok: true,
+    deleted: {
+      sessionId,
+      photos: counts?.photos ?? 0,
+      measurements: counts?.measurements ?? 0,
+      estimates: counts?.estimates ?? 0,
+    },
   });
 });
 
