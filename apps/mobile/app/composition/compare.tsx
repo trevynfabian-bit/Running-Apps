@@ -17,6 +17,7 @@
 
 import React, { useState } from 'react';
 import { View } from 'react-native';
+import { router } from 'expo-router';
 
 import { TAPE_REPEATABILITY_CM, formatCanonicalLength, formatSignedLength } from '@running/core';
 
@@ -48,7 +49,7 @@ import {
   Stack,
   Type,
 } from '../../src/components/primitives';
-import { PhotoComparison } from '../../src/components/composition';
+import { PhotoComparison, PrivacyLink } from '../../src/components/composition';
 import { TrendChart } from '../../src/components/trend-chart';
 import { buildTrendSeries, type TrendMetric } from '../../src/lib/composition-trends';
 import {
@@ -338,6 +339,7 @@ export default function CompareScreen(): React.ReactElement {
             body="A time range needs at least two sessions inside it. Widen the range, or choose two sessions directly."
           />
         )}
+        <PrivacyLink onPress={() => router.push('/composition/privacy')} />
       </Stack>
     </Screen>
   );

@@ -10,12 +10,9 @@
 import React, { useState } from 'react';
 import { Alert, RefreshControl, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
+import { router } from 'expo-router';
 
-import {
-  collectForIngest,
-  isHealthKitAvailable,
-  requestAuthorization,
-} from '@running/health-kit';
+import { collectForIngest, isHealthKitAvailable, requestAuthorization } from '@running/health-kit';
 
 import { api, type Connection } from '../src/lib/api';
 import { useQuery } from '../src/lib/session';
@@ -33,6 +30,7 @@ import {
   Type,
 } from '../src/components/primitives';
 import { StatusDot } from '../src/components/metrics';
+import { PrivacyLink } from '../src/components/composition';
 
 export default function ConnectionsScreen(): React.ReactElement {
   const theme = useTheme();
@@ -270,6 +268,9 @@ export default function ConnectionsScreen(): React.ReactElement {
               that came from it — workouts also seen by another connected service are kept, with
               that source&apos;s contribution removed.
             </Type>
+            {/* Body photos and measurements are held differently from provider
+                data, and people look for both in the same place. */}
+            <PrivacyLink onPress={() => router.push('/composition/privacy')} />
           </Stack>
         </Card>
       </Stack>

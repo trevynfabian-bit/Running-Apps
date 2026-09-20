@@ -33,6 +33,7 @@
 
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { router } from 'expo-router';
 
 import { formatCanonicalLength, parseLength, toCanonicalLength } from '@running/core';
 
@@ -40,6 +41,7 @@ import { STUB_CIRCUMFERENCE_POINTS, findPoint } from '../../src/lib/body-composi
 import { useCompositionSessions } from '../../src/lib/composition-session-store';
 import {
   MetricHistoryCard,
+  PrivacyLink,
   SessionSummaryCard,
   UnitToggle,
 } from '../../src/components/composition';
@@ -350,6 +352,7 @@ export default function MeasurementsScreen(): React.ReactElement {
             onDelete={(sessionId) => remove(sessionId, pointId)}
           />
         </View>
+        <PrivacyLink onPress={() => router.push('/composition/privacy')} />
       </Stack>
     </Screen>
   );

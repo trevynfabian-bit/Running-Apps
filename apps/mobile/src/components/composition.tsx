@@ -1253,3 +1253,40 @@ function PhotoSlot({
     </View>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Privacy
+// ---------------------------------------------------------------------------
+
+/**
+ * A link to where composition data lives.
+ *
+ * One component rather than a sentence each screen writes, so the wording and
+ * the destination cannot drift apart — and so adding the link to a new screen
+ * is one import rather than a decision about how to phrase it.
+ *
+ * It sits on every screen that shows body data, because "where did this go?"
+ * is a question people have at the moment they are looking at the thing, not
+ * later when they think to go hunting through settings.
+ */
+export function PrivacyLink({
+  onPress,
+  label = 'Where your composition data lives',
+}: {
+  onPress: () => void;
+  label?: string;
+}): React.ReactElement {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="link"
+      accessibilityLabel={`${label}. Opens the storage and deletion page.`}
+      hitSlop={8}
+      style={{ minHeight: 44, justifyContent: 'center' }}
+    >
+      <Type variant="caption" tone="accent">
+        {label}
+      </Type>
+    </Pressable>
+  );
+}

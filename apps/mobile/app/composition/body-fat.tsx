@@ -90,6 +90,7 @@ import {
   BodyFatRange,
   FormulaSteps,
   NonMedicalNotice,
+  PrivacyLink,
   QuantityField,
   RequirementList,
   ServiceStatusNotice,
@@ -403,6 +404,7 @@ export default function BodyFatScreen(): React.ReactElement {
         </View>
 
         <NonMedicalNotice />
+        <PrivacyLink onPress={() => router.push('/composition/privacy')} />
       </Stack>
     </Screen>
   );

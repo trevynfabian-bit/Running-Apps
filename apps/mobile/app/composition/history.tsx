@@ -17,7 +17,9 @@
 
 import React from 'react';
 import { Alert, Pressable, View } from 'react-native';
+import { router } from 'expo-router';
 
+import { PrivacyLink } from '../../src/components/composition';
 import { useCompositionSessions } from '../../src/lib/composition-session-store';
 import { STUB_SESSION_HISTORY } from '../../src/lib/composition-history-stub';
 import {
@@ -129,6 +131,7 @@ export default function CompositionHistoryScreen(): React.ReactElement {
             </Stack>
           </Card>
         </View>
+        <PrivacyLink onPress={() => router.push('/composition/privacy')} />
       </Stack>
     </Screen>
   );
