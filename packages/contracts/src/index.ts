@@ -1190,6 +1190,50 @@ export const compareSessionsQuerySchema = z
 export type CompareSessionsQueryDto = z.infer<typeof compareSessionsQuerySchema>;
 
 /**
+ * A point on a trend line.
+ *
+ * `changeCm` is the move from the previous reading, computed in canonical
+ * units. Absent on the oldest point, which has nothing to compare against —
+ * distinct from a change of zero, and the two must stay distinguishable.
+ */
+export const trendPointSchema = z.object({
+  capturedAt: isoDateTime,
+  localDate: localDate,
+  value: z.number(),
+  changeCm: z.number().optional(),
+});
+export type TrendPointDto = z.infer<typeof trendPointSchema>;
+
+/** A point on a band, for a metric that has no single value. */
+export const trendBandPointSchema = z.object({
+  capturedAt: isoDateTime,
+  localDate: localDate,
+  low: z.number(),
+  high: z.number(),
+});
+export type TrendBandPointDto = z.infer<typeof trendBandPointSchema>;
+
+/**
+ * One metric over time.
+ *
+ * Exactly one of `points` and `band` is present. Body fat comes back as a band
+ * because the estimate has no single value; everything else is a line.
+ *
+ * One metric per response, and the unit travels with it. Centimetres,
+ * kilograms and a percentage never share an axis: the alignment between two
+ * scales is arbitrary, so a chart drawing two of them together invents a
+ * correlation that is not in the data.
+ */
+export const trendSeriesSchema = z.object({
+  metric: z.string(),
+  label: z.string(),
+  unit: z.string(),
+  points: z.array(trendPointSchema).optional(),
+  band: z.array(trendBandPointSchema).optional(),
+});
+export type TrendSeriesDto = z.infer<typeof trendSeriesSchema>;
+
+/**
  * Uniform error envelope. `code` is stable and machine-readable; `message` is
  * athlete-facing and must never contain a stack trace or provider internals.
  */

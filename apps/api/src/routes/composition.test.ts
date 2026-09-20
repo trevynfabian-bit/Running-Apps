@@ -1562,3 +1562,146 @@ describe('serving and pairing photos', () => {
     });
   });
 });
+
+describe('GET /api/composition/trend', () => {
+  let trendToken: string;
+
+  beforeAll(async () => {
+    const signUp = await app.request('/api/auth/signup', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: 'trend@example.test',
+        password: 'a-long-enough-password',
+        displayName: 'Trend',
+      }),
+    });
+    trendToken = ((await signUp.json()) as { token: string }).token;
+
+    const series: [string, number][] = [
+      ['2026-06-14T07:30:00.000Z', 88.2],
+      ['2026-07-12T07:15:00.000Z', 87.1],
+      ['2026-09-06T07:45:00.000Z', 85.3],
+    ];
+
+    for (const [capturedAt, waist] of series) {
+      const created = (await (
+        await app.request('/api/composition/sessions', {
+          method: 'POST',
+          headers: { authorization: `Bearer ${trendToken}` },
+          body: sessionForm({}, { capturedAt }),
+        })
+      ).json()) as { id: string };
+
+      await app.request(`/api/composition/sessions/${created.id}/measurements`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${trendToken}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          measurements: [
+            { pointCode: 'waist', value: waist },
+            { pointCode: 'neck', value: 38.1 },
+          ],
+        }),
+      });
+
+      await app.request(`/api/composition/sessions/${created.id}/body-fat`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${trendToken}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          method: 'navy',
+          variant: 'male',
+          height: { value: 178, unit: 'cm' },
+        }),
+      });
+    }
+  }, 60_000);
+
+  async function trend(query: string, auth = trendToken): Promise<Response> {
+    return app.request(`/api/composition/trend?${query}`, {
+      headers: { authorization: `Bearer ${auth}` },
+    });
+  }
+
+  it('returns a circumference oldest first, with its unit', async () => {
+    const body = (await (await trend('metric=circumference:waist')).json()) as {
+      label: string;
+      unit: string;
+      points: { value: number; changeCm?: number }[];
+    };
+
+    expect(body.unit).toBe('cm');
+    // The point's own label, not its code: nobody says "left_arm".
+    expect(body.label).toBe('Waist');
+    expect(body.points.map((point) => point.value)).toEqual([88.2, 87.1, 85.3]);
+  });
+
+  it('carries the change from the previous reading', async () => {
+    const body = (await (await trend('metric=circumference:waist')).json()) as {
+      points: { value: number; changeCm?: number }[];
+    };
+
+    // Oldest first, so the first point has nothing behind it.
+    expect(body.points[0]?.changeCm).toBeUndefined();
+    expect(body.points[1]?.changeCm).toBeCloseTo(-1.1, 6);
+    expect(body.points[2]?.changeCm).toBeCloseTo(-1.8, 6);
+  });
+
+  it('returns body fat as a band, never a line', async () => {
+    const body = (await (await trend('metric=bodyFat:navy')).json()) as {
+      unit: string;
+      band?: { low: number; high: number }[];
+      points?: unknown;
+    };
+
+    expect(body.unit).toBe('%');
+    expect(body.band).toHaveLength(3);
+    expect(body.points).toBeUndefined();
+    expect(body.band![0]!.high).toBeGreaterThan(body.band![0]!.low);
+  });
+
+  it('gives each metric its own unit, because they never share an axis', async () => {
+    const waist = (await (await trend('metric=circumference:waist')).json()) as { unit: string };
+    const fat = (await (await trend('metric=bodyFat:navy')).json()) as { unit: string };
+    const weight = (await (await trend('metric=weight')).json()) as { unit: string };
+
+    expect(new Set([waist.unit, fat.unit, weight.unit]).size).toBe(3);
+  });
+
+  it('honours a window', async () => {
+    // A 91-day window from now reaches past July but not June.
+    const body = (await (await trend('metric=circumference:waist&days=91')).json()) as {
+      points: { value: number }[];
+    };
+
+    expect(body.points.map((point) => point.value)).toEqual([87.1, 85.3]);
+  });
+
+  it('returns an empty series rather than an error when nothing is recorded', async () => {
+    const body = (await (await trend('metric=circumference:thigh')).json()) as {
+      points: unknown[];
+    };
+
+    expect(body.points).toEqual([]);
+  });
+
+  it('rejects a metric it does not know', async () => {
+    expect((await trend('metric=vibes')).status).toBe(400);
+    expect((await trend('metric=circumference:left_earlobe')).status).toBe(404);
+    expect((await trend('metric=bodyFat:calipers')).status).toBe(400);
+  });
+
+  it('never mixes in another athlete readings', async () => {
+    const theirs = (await (await trend('metric=circumference:waist', token)).json()) as {
+      points: { value: number }[];
+    };
+    const mine = (await (await trend('metric=circumference:waist')).json()) as {
+      points: { value: number }[];
+    };
+
+    expect(theirs.points.map((p) => p.value)).not.toEqual(mine.points.map((p) => p.value));
+  });
+
+  it('requires a signed-in athlete', async () => {
+    expect((await app.request('/api/composition/trend?metric=weight')).status).toBe(401);
+  });
+});

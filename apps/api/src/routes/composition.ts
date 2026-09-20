@@ -27,6 +27,7 @@ import {
   type BodyFatHistoryDto,
   type ComparisonOptionDto,
   type PhotoPairDto,
+  type TrendSeriesDto,
   type MetricHistoryDto,
   type CompositionMeasurementDto,
   type CompositionPhotoDto,
@@ -36,6 +37,7 @@ import {
 } from '@running/contracts';
 import {
   estimateBodyFat,
+  withChanges as withChangesCore,
   toCanonicalLength,
   toCanonicalMass,
   withChanges,
@@ -49,6 +51,7 @@ import {
   athleteProfiles,
   bodyCompositionSessions,
   bodyFatEstimates,
+  bodyMeasurements,
   circumferencePoints,
   compositionMeasurements,
   compositionPhotos,
@@ -595,7 +598,7 @@ compositionRoutes.get('/points/:code/history', async (c) => {
 async function pointByCode(
   db: Awaited<ReturnType<typeof getDb>>['db'],
   code: string,
-): Promise<{ id: string; code: string }> {
+): Promise<{ id: string; code: string; label: string }> {
   const [point] = await db
     .select()
     .from(circumferencePoints)
@@ -1286,3 +1289,160 @@ async function resolveComparisonPair(
 
   return { earlier: sessions[sessions.length - 1]!, later: sessions[0]! };
 }
+
+/**
+ * One metric over time, for the trend chart.
+ *
+ * One metric per request, and the unit travels with it. Centimetres, kilograms
+ * and a percentage never share an axis — the alignment between two scales is
+ * arbitrary, so a chart drawing two of them together would invent a correlation
+ * that is not in the data. The metric selector is what keeps the chart honest,
+ * not a convenience.
+ *
+ * `metric` is `circumference:<pointCode>`, `weight`, or `bodyFat:<method>`.
+ */
+compositionRoutes.get('/trend', async (c) => {
+  const athleteId = c.get('athleteId');
+  const metric = c.req.query('metric') ?? 'circumference:waist';
+
+  const requestedDays = Number(c.req.query('days') ?? Number.NaN);
+  const days =
+    Number.isFinite(requestedDays) && requestedDays > 0 ? Math.trunc(requestedDays) : undefined;
+  const cutoff = days === undefined ? undefined : new Date(Date.now() - days * 86_400_000);
+
+  const { db } = await getDb();
+
+  const withinWindow = (column: typeof bodyCompositionSessions.capturedAt) =>
+    cutoff === undefined ? undefined : gte(column, cutoff);
+
+  if (metric === 'weight') {
+    // Weight already has a home: the provider-sourced body measurements the
+    // rest of the app reads. A second store for it would drift.
+    const rows = await db
+      .select()
+      .from(bodyMeasurements)
+      .where(
+        cutoff === undefined
+          ? and(eq(bodyMeasurements.athleteId, athleteId), eq(bodyMeasurements.metric, 'weight_kg'))
+          : and(
+              eq(bodyMeasurements.athleteId, athleteId),
+              eq(bodyMeasurements.metric, 'weight_kg'),
+              gte(bodyMeasurements.measuredAt, cutoff),
+            ),
+      )
+      .orderBy(asc(bodyMeasurements.measuredAt));
+
+    const body: TrendSeriesDto = {
+      metric: 'weight',
+      label: 'Weight',
+      unit: 'kg',
+      points: rows.map((row) => ({
+        capturedAt: row.measuredAt.toISOString(),
+        localDate: row.measuredAt.toISOString().slice(0, 10),
+        value: row.normalizedValue,
+      })),
+    };
+    return c.json(body);
+  }
+
+  if (metric.startsWith('bodyFat')) {
+    const method = metric.split(':')[1] ?? 'navy';
+    if (!['navy', 'ymca', 'ai'].includes(method)) {
+      throw badRequest(`Unknown body fat method: ${method}.`, { method });
+    }
+
+    const rows = await db
+      .select({
+        capturedAt: bodyCompositionSessions.capturedAt,
+        localDate: bodyCompositionSessions.localDate,
+        low: bodyFatEstimates.valueLow,
+        high: bodyFatEstimates.valueHigh,
+      })
+      .from(bodyFatEstimates)
+      .innerJoin(
+        bodyCompositionSessions,
+        eq(bodyFatEstimates.sessionId, bodyCompositionSessions.id),
+      )
+      .where(
+        and(
+          eq(bodyCompositionSessions.athleteId, athleteId),
+          eq(bodyFatEstimates.method, method),
+          ...(withinWindow(bodyCompositionSessions.capturedAt)
+            ? [withinWindow(bodyCompositionSessions.capturedAt)!]
+            : []),
+        ),
+      )
+      .orderBy(asc(bodyCompositionSessions.capturedAt));
+
+    const body: TrendSeriesDto = {
+      metric,
+      label: 'Body fat estimate',
+      unit: '%',
+      // A band, not a line: the estimate has no single value, and a single
+      // trace would imply a precision it does not have.
+      band: rows.map((row) => ({
+        capturedAt: row.capturedAt.toISOString(),
+        localDate: row.localDate,
+        low: row.low,
+        high: row.high,
+      })),
+    };
+    return c.json(body);
+  }
+
+  const code = metric.startsWith('circumference:')
+    ? metric.slice('circumference:'.length)
+    : undefined;
+  if (!code) throw badRequest(`Unknown metric: ${metric}.`, { metric });
+
+  const point = await pointByCode(db, code);
+
+  const rows = await db
+    .select({
+      capturedAt: bodyCompositionSessions.capturedAt,
+      localDate: bodyCompositionSessions.localDate,
+      valueCm: compositionMeasurements.valueCm,
+    })
+    .from(compositionMeasurements)
+    .innerJoin(
+      bodyCompositionSessions,
+      eq(compositionMeasurements.sessionId, bodyCompositionSessions.id),
+    )
+    .where(
+      and(
+        eq(bodyCompositionSessions.athleteId, athleteId),
+        eq(compositionMeasurements.pointId, point.id),
+        ...(withinWindow(bodyCompositionSessions.capturedAt)
+          ? [withinWindow(bodyCompositionSessions.capturedAt)!]
+          : []),
+      ),
+    )
+    .orderBy(asc(bodyCompositionSessions.capturedAt));
+
+  // Deltas come from core, the same function the app uses, so a change read
+  // here and one read on the phone cannot disagree.
+  const withChange = withChangesCore(
+    rows.map((row) => ({
+      capturedAt: row.capturedAt.toISOString(),
+      localDate: row.localDate,
+      valueCm: row.valueCm,
+    })),
+  );
+
+  const body: TrendSeriesDto = {
+    metric,
+    // The point's own label, not its code: the chart title is read by a
+    // person, and "left_arm" is not how anyone says it.
+    label: point.label,
+    unit: 'cm',
+    // Oldest first for plotting; `withChanges` returns newest first.
+    points: [...withChange].reverse().map((entry) => ({
+      capturedAt: entry.capturedAt,
+      localDate: entry.localDate,
+      value: entry.valueCm,
+      ...(entry.changeCm !== undefined ? { changeCm: entry.changeCm } : {}),
+    })),
+  };
+
+  return c.json(body);
+});
