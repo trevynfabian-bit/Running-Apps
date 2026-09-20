@@ -1036,3 +1036,41 @@ describe('body fat from circumferences', () => {
     expect(response.status).toBe(401);
   });
 });
+
+describe('GET /api/composition/vision/status', () => {
+  it('reports unavailable when no service is configured', async () => {
+    const response = await app.request('/api/composition/vision/status', {
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      status: string;
+      configured: boolean;
+      message: string;
+      suggestFormula: boolean;
+    };
+
+    // The test environment configures no vision key, which is a working
+    // instance with one method fewer rather than an outage.
+    expect(body.status).toBe('unavailable');
+    expect(body.configured).toBe(false);
+    expect(body.suggestFormula).toBe(true);
+    expect(body.message).toContain('measurements method');
+  });
+
+  it('says nothing about keys, hosts or providers', async () => {
+    const response = await app.request('/api/composition/vision/status', {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const raw = JSON.stringify(await response.json());
+
+    for (const leak of ['apiKey', 'baseUrl', 'anthropic', 'VISION_']) {
+      expect(raw).not.toContain(leak);
+    }
+  });
+
+  it('requires a signed-in athlete', async () => {
+    expect((await app.request('/api/composition/vision/status')).status).toBe(401);
+  });
+});

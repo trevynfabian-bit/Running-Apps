@@ -57,6 +57,7 @@ import {
   type PhotoSide,
   type StoredPhoto,
 } from '../services/photo-storage.js';
+import { visionStatus } from '../services/vision.js';
 import type { AuthVariables } from '../security/auth.js';
 
 // Authentication is applied centrally in app.ts; see the PUBLIC_PATHS note there.
@@ -860,3 +861,13 @@ compositionRoutes.get('/sessions/:sessionId/body-fat', async (c) => {
 
   return c.json({ estimates: rows.map(toEstimateDto) });
 });
+
+/**
+ * What the photo-reading service can do right now.
+ *
+ * Returns a status, a sentence the app can show verbatim, and whether to point
+ * the athlete at the formula instead. Nothing about keys, hosts or providers
+ * crosses the wire — an athlete needs to know whether it works and what to do
+ * if it does not, and nothing else.
+ */
+compositionRoutes.get('/vision/status', (c) => c.json(visionStatus()));

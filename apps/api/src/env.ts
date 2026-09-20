@@ -46,6 +46,15 @@ const envSchema = z.object({
   WHOOP_REDIRECT_URI: z.string().optional(),
   WHOOP_WEBHOOK_SECRET: z.string().optional(),
 
+  /**
+   * Photo-reading service. Optional by design: the circumference equations run
+   * with nothing configured, so an instance with no vision credentials is a
+   * working instance with one method fewer, not a broken one.
+   */
+  VISION_API_KEY: z.string().optional(),
+  VISION_BASE_URL: z.string().default('https://api.anthropic.com'),
+  VISION_MODEL: z.string().default('claude-sonnet-5'),
+
   AI_API_KEY: z.string().optional(),
   AI_MODEL: z.string().default('claude-sonnet-4-5'),
   AI_BASE_URL: z.string().default('https://api.anthropic.com'),
@@ -56,6 +65,8 @@ export type Env = z.infer<typeof envSchema> & {
   stravaConfigured: boolean;
   whoopConfigured: boolean;
   aiConfigured: boolean;
+  /** True when a photo-reading service is configured. */
+  visionConfigured: boolean;
 };
 
 let cached: Env | undefined;
@@ -94,7 +105,13 @@ export function loadEnv(overrides: Record<string, unknown> = {}): Env {
     }
   }
 
-  return { ...env, stravaConfigured, whoopConfigured, aiConfigured: Boolean(env.AI_API_KEY) };
+  return {
+    ...env,
+    stravaConfigured,
+    whoopConfigured,
+    aiConfigured: Boolean(env.AI_API_KEY),
+    visionConfigured: Boolean(env.VISION_API_KEY),
+  };
 }
 
 export function env(): Env {
