@@ -34,19 +34,17 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
-import {
-  formatCanonicalLength,
-  parseLength,
-  toCanonicalLength,
-  type LengthUnit,
-} from '@running/core';
+import { formatCanonicalLength, parseLength, toCanonicalLength } from '@running/core';
 
 import { STUB_CIRCUMFERENCE_POINTS, findPoint } from '../../src/lib/body-composition';
-import { useActiveSession } from '../../src/lib/composition-session-store';
-import { MetricHistoryCard, SessionSummaryCard } from '../../src/components/composition';
+import { useCompositionSessions } from '../../src/lib/composition-session-store';
+import {
+  MetricHistoryCard,
+  SessionSummaryCard,
+  UnitToggle,
+} from '../../src/components/composition';
 import { historyForPoint } from '../../src/lib/composition-history';
-import { STUB_SESSION_HISTORY } from '../../src/lib/composition-history-stub';
-import { UNIT_OPTIONS, useMeasurementUnit } from '../../src/lib/measurement-units';
+import { useMeasurementUnit } from '../../src/lib/measurement-units';
 import {
   clearDraft,
   readDraft,
@@ -73,7 +71,7 @@ export default function MeasurementsScreen(): React.ReactElement {
   const theme = useTheme();
   const { defaultUnit, ready, setDefaultUnit } = useMeasurementUnit();
 
-  const { session, record, recorded } = useActiveSession();
+  const { active: session, all: sessions, record, amend, recorded } = useCompositionSessions();
 
   const [pointId, setPointId] = useState(STUB_CIRCUMFERENCE_POINTS[0]!.id);
   const [drafts, setDrafts] = useState<DraftsByPoint>({});
@@ -131,10 +129,7 @@ export default function MeasurementsScreen(): React.ReactElement {
    * when it has one. Including it means a measurement just saved lands in the
    * history immediately instead of appearing only after the session is filed.
    */
-  const history = historyForPoint(
-    session ? [session, ...STUB_SESSION_HISTORY] : STUB_SESSION_HISTORY,
-    pointId,
-  );
+  const history = historyForPoint(sessions, pointId);
 
   const inProgress = STUB_CIRCUMFERENCE_POINTS.filter(
     (option) =>
@@ -344,74 +339,10 @@ export default function MeasurementsScreen(): React.ReactElement {
             pointLabel={point?.label ?? 'this point'}
             entries={history}
             displayUnit={defaultUnit}
+            onCorrect={(sessionId, correction) => amend(sessionId, pointId, correction)}
           />
         </View>
       </Stack>
     </Screen>
-  );
-}
-
-/**
- * Segmented unit control.
- *
- * A two-option segmented control rather than a switch: a switch has an implied
- * on/off, and neither centimetres nor inches is the "off" one.
- */
-function UnitToggle({
-  value,
-  onChange,
-  accessibilityLabel,
-}: {
-  value: LengthUnit;
-  onChange: (unit: LengthUnit) => void;
-  accessibilityLabel: string;
-}): React.ReactElement {
-  const theme = useTheme();
-
-  return (
-    <View
-      accessibilityRole="radiogroup"
-      accessibilityLabel={accessibilityLabel}
-      style={{
-        flexDirection: 'row',
-        padding: spacing.xs,
-        gap: spacing.xs,
-        borderRadius: radius.md,
-        backgroundColor: theme.color.surfaceRaised,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: theme.color.border,
-      }}
-    >
-      {UNIT_OPTIONS.map((option) => {
-        const selected = option.value === value;
-        return (
-          <Pressable
-            key={option.value}
-            onPress={() => onChange(option.value)}
-            accessibilityRole="radio"
-            accessibilityState={{ selected }}
-            // The description carries the meaning so the control does not rely
-            // on a two-letter abbreviation being read aloud sensibly.
-            accessibilityLabel={option.description}
-            style={{
-              flex: 1,
-              minHeight: 44,
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: radius.sm,
-              backgroundColor: selected ? theme.color.accent : 'transparent',
-            }}
-          >
-            <Type
-              variant="bodyStrong"
-              tone={selected ? 'default' : 'secondary'}
-              style={selected ? { color: '#fff' } : undefined}
-            >
-              {option.label}
-            </Type>
-          </Pressable>
-        );
-      })}
-    </View>
   );
 }

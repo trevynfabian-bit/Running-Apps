@@ -17,6 +17,8 @@
  * inputs always produce the same session and tests need no clock.
  */
 
+import type { LengthUnit } from '@running/core';
+
 import type { BodyMeasurement, CircumferencePoint } from './body-composition';
 
 export interface BodyCompositionSession {
@@ -48,6 +50,36 @@ export function addMeasurement(
       measurement,
       ...session.measurements.filter((existing) => existing.pointId !== measurement.pointId),
     ],
+  };
+}
+
+/**
+ * Correct a value already recorded for a point.
+ *
+ * The measurement keeps its id and its `capturedAt`. Those record *when the
+ * athlete stood there with the tape*, and fixing a digit typed wrong does not
+ * move that moment — stamping the correction with the time of the correction
+ * would put a June measurement in September and quietly corrupt every trend
+ * built on top of it.
+ *
+ * A point with no measurement is left alone rather than gaining one: correcting
+ * something that was never recorded is a caller bug, and inventing a
+ * measurement to satisfy it would be worse than doing nothing.
+ */
+export function amendMeasurement(
+  session: BodyCompositionSession,
+  pointId: string,
+  patch: { valueCm: number; recordedUnit: LengthUnit },
+): BodyCompositionSession {
+  if (measurementForPoint(session, pointId) === undefined) return session;
+
+  return {
+    ...session,
+    measurements: session.measurements.map((existing) =>
+      existing.pointId === pointId
+        ? { ...existing, valueCm: patch.valueCm, recordedUnit: patch.recordedUnit }
+        : existing,
+    ),
   };
 }
 

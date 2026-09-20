@@ -1,48 +1,69 @@
 /**
- * The session currently being recorded.
+ * Every composition session the app currently knows about.
  *
- * Held in context rather than in the entry screen so the session outlives any
- * one screen: the photo steps and the circumference steps are separate routes
- * writing into the same session, and an athlete who backs out to check a guide
- * and returns must not find their work gone.
+ * Held in context rather than in a screen because the sessions outlive any one
+ * route: the photo steps and the circumference steps write into the same
+ * in-progress session, and the history list has to reflect a correction the
+ * moment it is made, from wherever it was made.
  *
- * A session starts lazily, on the first thing recorded into it. Opening the
- * screen and leaving without typing anything should not litter the history with
- * an empty session.
+ * Two kinds of session live here and the distinction matters:
  *
- * Stub-backed: nothing here reaches the API yet. When the endpoints land, this
- * is the seam — `record` becomes a POST and the reducer below stays as the
- * optimistic local copy.
+ *   `active`   the one being recorded now. It starts lazily, on the first thing
+ *              recorded into it, so opening the screen and leaving without
+ *              typing anything does not litter the history with an empty one.
+ *   `history`  sessions already filed. Seeded from stubs until the API lands.
+ *
+ * Corrections apply to both, because a value typed wrong is worth fixing
+ * whether it was typed a minute ago or in June.
+ *
+ * Stub-backed: nothing here reaches the API yet. When the endpoints arrive this
+ * is the seam — `record` and `amend` become requests and the reducers below
+ * stay as the optimistic local copy.
  */
 
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 
+import type { LengthUnit } from '@running/core';
+
 import type { BodyMeasurement } from './body-composition';
 import {
   addMeasurement,
+  amendMeasurement,
   createSession,
   measurementForPoint,
   removeMeasurement,
   type BodyCompositionSession,
 } from './composition-session';
+import { STUB_SESSION_HISTORY } from './composition-history-stub';
 
-interface ActiveSessionValue {
-  /** Undefined until the athlete records something. */
-  session?: BodyCompositionSession;
+export interface MeasurementCorrection {
+  valueCm: number;
+  recordedUnit: LengthUnit;
+}
+
+interface CompositionSessionsValue {
+  /** The session being recorded, once anything has been recorded into it. */
+  active?: BodyCompositionSession;
+  /** Sessions already filed, oldest to newest as the source provides them. */
+  history: readonly BodyCompositionSession[];
+  /** Active plus history, for callers that just want every session. */
+  all: readonly BodyCompositionSession[];
   /**
    * Record a circumference into the active session, starting one if needed.
    * Replaces any earlier value for the same point.
    */
   record: (measurement: Omit<BodyMeasurement, 'id'>) => void;
+  /** Correct a value in any session — the active one or a filed one. */
+  amend: (sessionId: string, pointId: string, correction: MeasurementCorrection) => void;
   /** Drop a point's measurement from the active session. */
   discard: (pointId: string) => void;
-  /** Clear the session entirely — used when it has been saved or abandoned. */
+  /** Clear the active session — used when it has been filed or abandoned. */
   reset: () => void;
-  /** The value already recorded for a point in this session, if any. */
+  /** The value already recorded for a point in the active session, if any. */
   recorded: (pointId: string) => BodyMeasurement | undefined;
 }
 
-const ActiveSessionContext = createContext<ActiveSessionValue | undefined>(undefined);
+const CompositionSessionsContext = createContext<CompositionSessionsValue | undefined>(undefined);
 
 /**
  * Local id for a record the server has not seen.
@@ -57,15 +78,16 @@ function nextLocalId(): string {
   return `local-${Date.now()}-${localIdCounter}`;
 }
 
-export function ActiveSessionProvider({
+export function CompositionSessionsProvider({
   children,
 }: {
   children: React.ReactNode;
 }): React.ReactElement {
-  const [session, setSession] = useState<BodyCompositionSession>();
+  const [active, setActive] = useState<BodyCompositionSession>();
+  const [history, setHistory] = useState<readonly BodyCompositionSession[]>(STUB_SESSION_HISTORY);
 
   const record = useCallback((measurement: Omit<BodyMeasurement, 'id'>) => {
-    setSession((current) => {
+    setActive((current) => {
       // The session is stamped with when it began, not when this measurement
       // landed, so every entry in it shares one documentation moment.
       const base = current ?? createSession(nextLocalId(), measurement.capturedAt);
@@ -73,29 +95,61 @@ export function ActiveSessionProvider({
     });
   }, []);
 
+  const amend = useCallback(
+    (sessionId: string, pointId: string, correction: MeasurementCorrection) => {
+      // The session id decides which list is touched, so a correction can
+      // never write a filed value into the session being recorded.
+      setActive((current) =>
+        current && current.id === sessionId
+          ? amendMeasurement(current, pointId, correction)
+          : current,
+      );
+
+      setHistory((current) => {
+        const index = current.findIndex((session) => session.id === sessionId);
+        if (index === -1) return current;
+
+        const amended = amendMeasurement(current[index]!, pointId, correction);
+        // Nothing to correct: return the same array so React skips the render.
+        if (amended === current[index]) return current;
+
+        const next = [...current];
+        next[index] = amended;
+        return next;
+      });
+    },
+    [],
+  );
+
   const discard = useCallback((pointId: string) => {
-    setSession((current) => (current ? removeMeasurement(current, pointId) : current));
+    setActive((current) => (current ? removeMeasurement(current, pointId) : current));
   }, []);
 
-  const reset = useCallback(() => setSession(undefined), []);
+  const reset = useCallback(() => setActive(undefined), []);
 
   const recorded = useCallback(
-    (pointId: string) => (session ? measurementForPoint(session, pointId) : undefined),
-    [session],
+    (pointId: string) => (active ? measurementForPoint(active, pointId) : undefined),
+    [active],
   );
+
+  const all = useMemo(() => (active ? [active, ...history] : history), [active, history]);
 
   const value = useMemo(
-    () => ({ session, record, discard, reset, recorded }),
-    [session, record, discard, reset, recorded],
+    () => ({ active, history, all, record, amend, discard, reset, recorded }),
+    [active, history, all, record, amend, discard, reset, recorded],
   );
 
-  return <ActiveSessionContext.Provider value={value}>{children}</ActiveSessionContext.Provider>;
+  return (
+    <CompositionSessionsContext.Provider value={value}>
+      {children}
+    </CompositionSessionsContext.Provider>
+  );
 }
 
-export function useActiveSession(): ActiveSessionValue {
-  const value = useContext(ActiveSessionContext);
+export function useCompositionSessions(): CompositionSessionsValue {
+  const value = useContext(CompositionSessionsContext);
   if (!value) {
-    throw new Error('useActiveSession must be used inside an ActiveSessionProvider');
+    throw new Error('useCompositionSessions must be used inside a CompositionSessionsProvider');
   }
   return value;
 }

@@ -7,17 +7,25 @@
  * summary leads with coverage and gaps rather than with a running log.
  */
 
-import React, { useMemo } from 'react';
-import { View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
-import { formatCanonicalLength, formatSignedLength, type LengthUnit } from '@running/core';
+import {
+  formatCanonicalLength,
+  fromCanonicalLength,
+  formatSignedLength,
+  parseLength,
+  toCanonicalLength,
+  type LengthUnit,
+} from '@running/core';
 
 import type { BodyMeasurement, CircumferencePoint } from '../lib/body-composition';
 import type { MetricHistoryEntry } from '../lib/composition-history';
 import { summariseSession, type BodyCompositionSession } from '../lib/composition-session';
+import { UNIT_OPTIONS } from '../lib/measurement-units';
 import { radius, spacing } from '../design/tokens';
 import { useTheme } from '../design/theme';
-import { Card, Divider, EmptyState, Stack, Type } from './primitives';
+import { Button, Card, Divider, EmptyState, Stack, Type } from './primitives';
 
 /**
  * Everything this session holds, point by point.
@@ -208,15 +216,23 @@ function SummaryRow({
  * coming down are not the same news, and the app cannot know which one the
  * athlete was training for — so the arrow says which way, the colour stays
  * neutral, and the athlete supplies the meaning.
+ *
+ * Any row can be corrected in place. A number typed wrong three months ago is
+ * still wrong, and it is dragging every delta computed from it along with it —
+ * so the fix belongs here, on the row showing the bad value, rather than behind
+ * a separate screen the athlete has to go find.
  */
 export function MetricHistoryCard({
   pointLabel,
   entries,
   displayUnit,
+  onCorrect,
 }: {
   pointLabel: string;
   entries: readonly MetricHistoryEntry[];
   displayUnit: LengthUnit;
+  /** Save a corrected value for one session's entry. */
+  onCorrect: (sessionId: string, correction: { valueCm: number; recordedUnit: LengthUnit }) => void;
 }): React.ReactElement {
   if (entries.length === 0) {
     return (
@@ -233,7 +249,12 @@ export function MetricHistoryCard({
         {entries.map((entry, index) => (
           <React.Fragment key={entry.sessionId}>
             {index > 0 ? <Divider /> : null}
-            <HistoryRow entry={entry} displayUnit={displayUnit} isLatest={index === 0} />
+            <HistoryRow
+              entry={entry}
+              displayUnit={displayUnit}
+              isLatest={index === 0}
+              onCorrect={(correction) => onCorrect(entry.sessionId, correction)}
+            />
           </React.Fragment>
         ))}
       </Stack>
@@ -245,11 +266,15 @@ function HistoryRow({
   entry,
   displayUnit,
   isLatest,
+  onCorrect,
 }: {
   entry: MetricHistoryEntry;
   displayUnit: LengthUnit;
   isLatest: boolean;
+  onCorrect: (correction: { valueCm: number; recordedUnit: LengthUnit }) => void;
 }): React.ReactElement {
+  const [editing, setEditing] = useState(false);
+
   const when = useMemo(
     () =>
       new Date(entry.capturedAt).toLocaleDateString(undefined, {
@@ -272,17 +297,32 @@ function HistoryRow({
           label: formatSignedLength(entry.changeCm, displayUnit),
         };
 
+  if (editing) {
+    return (
+      <CorrectionEditor
+        entry={entry}
+        when={when}
+        onCancel={() => setEditing(false)}
+        onSave={(correction) => {
+          onCorrect(correction);
+          setEditing(false);
+        }}
+      />
+    );
+  }
+
   return (
-    <View
-      accessible
-      accessibilityLabel={
-        change
-          ? `${when}, ${reading}, ${change.label} from the session before`
-          : `${when}, ${reading}, first recorded`
-      }
-    >
-      <Stack direction="row" justify="space-between" align="center" gap={spacing.md}>
-        <Stack gap={2} style={{ flexShrink: 1 }}>
+    <Stack direction="row" justify="space-between" align="center" gap={spacing.md}>
+      <View
+        accessible
+        accessibilityLabel={
+          change
+            ? `${when}, ${reading}, ${change.label} from the session before`
+            : `${when}, ${reading}, first recorded`
+        }
+        style={{ flexShrink: 1 }}
+      >
+        <Stack gap={2}>
           <Type variant="bodyStrong">{when}</Type>
           <Type variant="caption" tone="tertiary">
             {entry.recordedUnit === displayUnit
@@ -292,13 +332,199 @@ function HistoryRow({
               : `Recorded as ${formatCanonicalLength(entry.valueCm, entry.recordedUnit)}`}
           </Type>
         </Stack>
+      </View>
+
+      <Stack direction="row" align="center" gap={spacing.md}>
         <Stack gap={2} align="flex-end">
           <Type variant="metricSmall">{reading}</Type>
           <Type variant="caption" tone="secondary">
             {change ? `${change.arrow} ${change.label}` : 'First recorded'}
           </Type>
         </Stack>
+        <Pressable
+          onPress={() => setEditing(true)}
+          accessibilityRole="button"
+          // Names the row, so a screen reader hears which value this edits
+          // rather than seven identical "Edit" buttons.
+          accessibilityLabel={`Correct the ${when} measurement, currently ${reading}`}
+          hitSlop={8}
+          style={{ minHeight: 44, minWidth: 44, justifyContent: 'center', alignItems: 'flex-end' }}
+        >
+          <Type variant="caption" tone="accent">
+            Edit
+          </Type>
+        </Pressable>
       </Stack>
+    </Stack>
+  );
+}
+
+/**
+ * Correct one recorded value, in place.
+ *
+ * Opens on the number as it was actually typed, in the unit it was typed in.
+ * Showing a converted value here would invite the athlete to re-enter a
+ * rounding of their own measurement — correcting a typo must not quietly move
+ * the number by a tenth.
+ */
+function CorrectionEditor({
+  entry,
+  when,
+  onSave,
+  onCancel,
+}: {
+  entry: MetricHistoryEntry;
+  when: string;
+  onSave: (correction: { valueCm: number; recordedUnit: LengthUnit }) => void;
+  onCancel: () => void;
+}): React.ReactElement {
+  const theme = useTheme();
+
+  // What the field opens on, kept so an untouched editor can be recognised.
+  const initialValue = fromCanonicalLength(entry.valueCm, entry.recordedUnit).toFixed(1);
+
+  const [unit, setUnit] = useState<LengthUnit>(entry.recordedUnit);
+  const [value, setValue] = useState(initialValue);
+  const [error, setError] = useState<string>();
+
+  const save = (): void => {
+    const parsed = parseLength(value);
+    if (parsed === undefined) {
+      setError('Enter a measurement as a number, for example 86.4.');
+      return;
+    }
+
+    // Opening the editor and saving without touching anything must not change
+    // the stored value. The field shows one decimal, so writing it back would
+    // push the canonical number by a rounding step — a silent edit to data the
+    // athlete never touched. Nothing changed, so nothing is written.
+    if (value.trim() === initialValue && unit === entry.recordedUnit) {
+      onCancel();
+      return;
+    }
+
+    onSave({ valueCm: toCanonicalLength(parsed, unit), recordedUnit: unit });
+  };
+
+  return (
+    <Stack gap={spacing.md}>
+      <Type variant="bodyStrong">Correcting {when}</Type>
+
+      <Stack direction="row" gap={spacing.sm} align="center">
+        <TextInput
+          value={value}
+          onChangeText={(next) => {
+            setValue(next);
+            if (error) setError(undefined);
+          }}
+          keyboardType="decimal-pad"
+          inputMode="decimal"
+          autoFocus
+          selectTextOnFocus
+          placeholderTextColor={theme.color.textTertiary}
+          accessibilityLabel={`Corrected measurement for ${when}, in ${unit}`}
+          returnKeyType="done"
+          onSubmitEditing={save}
+          style={{
+            flex: 1,
+            minHeight: 48,
+            paddingHorizontal: spacing.md,
+            borderRadius: radius.md,
+            backgroundColor: theme.color.surfaceRaised,
+            color: theme.color.text,
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: theme.color.borderStrong,
+            fontVariant: ['tabular-nums' as const],
+          }}
+        />
+        <View style={{ width: 120 }}>
+          <UnitToggle value={unit} onChange={setUnit} accessibilityLabel="Unit for this value" />
+        </View>
+      </Stack>
+
+      {error ? (
+        <Type variant="caption" tone="negative">
+          {error}
+        </Type>
+      ) : (
+        <Type variant="caption" tone="tertiary">
+          Correcting the number does not move when it was taken.
+        </Type>
+      )}
+
+      <Stack direction="row" gap={spacing.sm}>
+        <Button label="Cancel" onPress={onCancel} variant="secondary" style={{ flex: 1 }} />
+        <Button label="Save correction" onPress={save} style={{ flex: 2 }} />
+      </Stack>
+    </Stack>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Controls
+// ---------------------------------------------------------------------------
+
+/**
+ * Segmented unit control.
+ *
+ * A two-option segmented control rather than a switch: a switch has an implied
+ * on/off, and neither centimetres nor inches is the "off" one.
+ */
+export function UnitToggle({
+  value,
+  onChange,
+  accessibilityLabel,
+}: {
+  value: LengthUnit;
+  onChange: (unit: LengthUnit) => void;
+  accessibilityLabel: string;
+}): React.ReactElement {
+  const theme = useTheme();
+
+  return (
+    <View
+      accessibilityRole="radiogroup"
+      accessibilityLabel={accessibilityLabel}
+      style={{
+        flexDirection: 'row',
+        padding: spacing.xs,
+        gap: spacing.xs,
+        borderRadius: radius.md,
+        backgroundColor: theme.color.surfaceRaised,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.color.border,
+      }}
+    >
+      {UNIT_OPTIONS.map((option) => {
+        const selected = option.value === value;
+        return (
+          <Pressable
+            key={option.value}
+            onPress={() => onChange(option.value)}
+            accessibilityRole="radio"
+            accessibilityState={{ selected }}
+            // The description carries the meaning so the control does not rely
+            // on a two-letter abbreviation being read aloud sensibly.
+            accessibilityLabel={option.description}
+            style={{
+              flex: 1,
+              minHeight: 44,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: radius.sm,
+              backgroundColor: selected ? theme.color.accent : 'transparent',
+            }}
+          >
+            <Type
+              variant="bodyStrong"
+              tone={selected ? 'default' : 'secondary'}
+              style={selected ? { color: '#fff' } : undefined}
+            >
+              {option.label}
+            </Type>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }

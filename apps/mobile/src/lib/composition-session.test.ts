@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import type { BodyMeasurement, CircumferencePoint } from './body-composition';
 import {
   addMeasurement,
+  amendMeasurement,
   createSession,
   isSessionEmpty,
   measuredPointIds,
@@ -117,6 +118,80 @@ describe('body composition session', () => {
     const withOne = addMeasurement(session, measurement());
     removeMeasurement(withOne, 'point-waist');
     expect(withOne.measurements).toHaveLength(1);
+  });
+});
+
+describe('correcting a recorded value', () => {
+  it('replaces the number without moving when it was taken', () => {
+    const session = addMeasurement(
+      createSession('session-1', STARTED_AT),
+      measurement({ id: 'm-1', valueCm: 86.4, capturedAt: '2026-06-14T07:30:00.000Z' }),
+    );
+
+    const corrected = amendMeasurement(session, 'point-waist', {
+      valueCm: 85.1,
+      recordedUnit: 'cm',
+    });
+
+    const waist = measurementForPoint(corrected, 'point-waist');
+    expect(waist?.valueCm).toBe(85.1);
+    // A typo fixed in September does not move a June measurement.
+    expect(waist?.capturedAt).toBe('2026-06-14T07:30:00.000Z');
+    expect(waist?.id).toBe('m-1');
+  });
+
+  it('can change the unit the value was recorded in', () => {
+    const session = addMeasurement(
+      createSession('session-1', STARTED_AT),
+      measurement({ valueCm: 86.4, recordedUnit: 'cm' }),
+    );
+
+    const corrected = amendMeasurement(session, 'point-waist', {
+      valueCm: 86.36,
+      recordedUnit: 'in',
+    });
+
+    expect(measurementForPoint(corrected, 'point-waist')?.recordedUnit).toBe('in');
+  });
+
+  it('leaves other points untouched', () => {
+    let session = createSession('session-1', STARTED_AT);
+    session = addMeasurement(session, measurement({ id: 'm-1', pointId: 'point-waist' }));
+    session = addMeasurement(
+      session,
+      measurement({ id: 'm-2', pointId: 'point-chest', valueCm: 99 }),
+    );
+
+    const corrected = amendMeasurement(session, 'point-waist', {
+      valueCm: 85.1,
+      recordedUnit: 'cm',
+    });
+
+    expect(measurementForPoint(corrected, 'point-chest')?.valueCm).toBe(99);
+    expect(corrected.measurements).toHaveLength(2);
+  });
+
+  it('does not invent a measurement for a point that has none', () => {
+    const session = addMeasurement(createSession('session-1', STARTED_AT), measurement());
+
+    const corrected = amendMeasurement(session, 'point-thigh', {
+      valueCm: 55,
+      recordedUnit: 'cm',
+    });
+
+    expect(corrected).toBe(session);
+    expect(measurementForPoint(corrected, 'point-thigh')).toBeUndefined();
+  });
+
+  it('never mutates the session it was given', () => {
+    const session = addMeasurement(
+      createSession('session-1', STARTED_AT),
+      measurement({ valueCm: 86.4 }),
+    );
+
+    amendMeasurement(session, 'point-waist', { valueCm: 85.1, recordedUnit: 'cm' });
+
+    expect(measurementForPoint(session, 'point-waist')?.valueCm).toBe(86.4);
   });
 });
 
