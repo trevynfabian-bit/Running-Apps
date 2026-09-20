@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import type { BodyCompositionSession } from './composition-session';
 import {
   describeContents,
+  describeDeletion,
   inventory,
   inventorySession,
   inventoryTotals,
@@ -131,5 +132,63 @@ describe('describeContents', () => {
     expect(describeContents(inventorySession(session('a', '2026-09-06T07:45:00.000Z')))).toBe(
       'Nothing recorded',
     );
+  });
+});
+
+describe('describeDeletion', () => {
+  it('names what goes rather than asking if they are sure', () => {
+    const entry = inventorySession(
+      session('a', '2026-09-06T07:45:00.000Z', { photos: 4, measurements: 6 }),
+    );
+
+    const text = describeDeletion(entry);
+
+    // The difference between a considered decision and a reflex.
+    expect(text).toContain('4 photos');
+    expect(text).toContain('6 measurements');
+    // The date is formatted in the athlete's locale, so assert on its parts
+    // rather than on one locale's ordering.
+    expect(text).toContain('September');
+    expect(text).toContain('2026');
+    expect(text).toContain('permanently');
+  });
+
+  it('says the photos leave the servers too', () => {
+    const withPhotos = describeDeletion(
+      inventorySession(session('a', '2026-09-06T07:45:00.000Z', { photos: 4 })),
+    );
+    const numbersOnly = describeDeletion(
+      inventorySession(session('b', '2026-09-06T07:45:00.000Z', { measurements: 4 })),
+    );
+
+    expect(withPhotos).toContain('servers');
+    // No photos, nothing on the servers, so no claim about them.
+    expect(numbersOnly).not.toContain('servers');
+  });
+
+  it('promises the other sessions are untouched', () => {
+    const text = describeDeletion(
+      inventorySession(session('a', '2026-09-06T07:45:00.000Z', { measurements: 2 })),
+    );
+
+    expect(text).toContain('other sessions are not affected');
+  });
+
+  it('says plainly when there is nothing to lose', () => {
+    const text = describeDeletion(inventorySession(session('a', '2026-09-06T07:45:00.000Z')));
+
+    expect(text).toContain('nothing will be lost');
+    expect(text).not.toContain('permanently');
+  });
+
+  it('is singular where it should be', () => {
+    const text = describeDeletion(
+      inventorySession(session('a', '2026-09-06T07:45:00.000Z', { photos: 1, measurements: 1 })),
+    );
+
+    expect(text).toContain('1 photo and 1 measurement');
+    // Including the sentence about the servers, which also has to agree.
+    expect(text).not.toMatch(/\bphotos\b/);
+    expect(text).not.toMatch(/\bmeasurements\b/);
   });
 });

@@ -101,3 +101,39 @@ export function describeContents(entry: SessionInventory): string {
 
   return parts.join(' · ');
 }
+
+/**
+ * Exactly what disappears if this session is deleted.
+ *
+ * A confirmation that says "are you sure?" asks the athlete to remember what
+ * they are deleting. One that says "4 photos and 6 measurements from 6
+ * September" tells them, which is the difference between a considered decision
+ * and a reflex.
+ */
+export function describeDeletion(entry: SessionInventory): string {
+  const when = new Date(entry.capturedAt).toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+
+  if (entry.isEmpty) return `This session from ${when} holds nothing, so nothing will be lost.`;
+
+  const parts: string[] = [];
+  if (entry.photoCount > 0) {
+    parts.push(`${entry.photoCount} ${entry.photoCount === 1 ? 'photo' : 'photos'}`);
+  }
+  if (entry.measurementCount > 0) {
+    parts.push(
+      `${entry.measurementCount} ${entry.measurementCount === 1 ? 'measurement' : 'measurements'}`,
+    );
+  }
+
+  const server = entry.locations.includes('server')
+    ? entry.photoCount === 1
+      ? ' The photo is removed from our servers too.'
+      : ' The photos are removed from our servers too.'
+    : '';
+
+  return `${parts.join(' and ')} from ${when} will be permanently deleted.${server} Your other sessions are not affected.`;
+}

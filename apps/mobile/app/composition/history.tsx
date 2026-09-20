@@ -16,12 +16,13 @@
  */
 
 import React from 'react';
-import { View } from 'react-native';
+import { Alert, Pressable, View } from 'react-native';
 
 import { useCompositionSessions } from '../../src/lib/composition-session-store';
 import { STUB_SESSION_HISTORY } from '../../src/lib/composition-history-stub';
 import {
   describeContents,
+  describeDeletion,
   inventory,
   inventoryTotals,
   type SessionInventory,
@@ -48,7 +49,7 @@ function formatDate(iso: string): string {
 }
 
 export default function CompositionHistoryScreen(): React.ReactElement {
-  const { all } = useCompositionSessions();
+  const { all, removeSession } = useCompositionSessions();
   const entries = inventory(all.length > 0 ? all : STUB_SESSION_HISTORY);
   const totals = inventoryTotals(entries);
 
@@ -99,7 +100,7 @@ export default function CompositionHistoryScreen(): React.ReactElement {
               {entries.map((entry, index) => (
                 <React.Fragment key={entry.sessionId}>
                   {index > 0 ? <Divider /> : null}
-                  <SessionRow entry={entry} />
+                  <SessionRow entry={entry} onDelete={() => removeSession(entry.sessionId)} />
                 </React.Fragment>
               ))}
             </Stack>
@@ -110,10 +111,31 @@ export default function CompositionHistoryScreen(): React.ReactElement {
   );
 }
 
-function SessionRow({ entry }: { entry: SessionInventory }): React.ReactElement {
+function SessionRow({
+  entry,
+  onDelete,
+}: {
+  entry: SessionInventory;
+  onDelete: () => void;
+}): React.ReactElement {
   const onServer = entry.locations.includes('server');
   const when = formatDate(entry.capturedAt);
   const contents = describeContents(entry);
+
+  /**
+   * Ask before deleting, and say what goes.
+   *
+   * A dialog reading "are you sure?" asks the athlete to remember what they
+   * are deleting. One that names the photos, the measurements and the date
+   * tells them — which is the difference between a considered decision and a
+   * reflex. There is no undo, so this is the last place the truth can be told.
+   */
+  const confirmDelete = (): void => {
+    Alert.alert(`Delete this session?`, describeDeletion(entry), [
+      { text: 'Keep it', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: onDelete },
+    ]);
+  };
 
   return (
     <View
@@ -122,22 +144,38 @@ function SessionRow({ entry }: { entry: SessionInventory }): React.ReactElement 
         onServer ? 'Includes photos held on our servers.' : 'Held on this device only.'
       }`}
     >
-      <Stack direction="row" justify="space-between" align="center" gap={spacing.md}>
-        <Stack gap={2} style={{ flexShrink: 1 }}>
-          <Type variant="bodyStrong" tone={entry.isEmpty ? 'secondary' : 'default'}>
-            {when}
-          </Type>
-          <Type variant="caption" tone="tertiary">
-            {contents}
-          </Type>
+      <Stack gap={spacing.sm}>
+        <Stack direction="row" justify="space-between" align="center" gap={spacing.md}>
+          <Stack gap={2} style={{ flexShrink: 1 }}>
+            <Type variant="bodyStrong" tone={entry.isEmpty ? 'secondary' : 'default'}>
+              {when}
+            </Type>
+            <Type variant="caption" tone="tertiary">
+              {contents}
+            </Type>
+          </Stack>
+          {/* Where it lives, in words. A privacy screen is the last place to
+              convey something by colour alone. */}
+          <Chip
+            label={onServer ? 'On our servers' : 'This device'}
+            tone={onServer ? 'caution' : 'neutral'}
+            selected
+          />
         </Stack>
-        {/* Where it lives, in words. A privacy screen is the last place to
-            convey something by colour alone. */}
-        <Chip
-          label={onServer ? 'On our servers' : 'This device'}
-          tone={onServer ? 'caution' : 'neutral'}
-          selected
-        />
+
+        <Pressable
+          onPress={confirmDelete}
+          accessibilityRole="button"
+          // Names the session, so a screen reader hears which one this
+          // deletes rather than a column of identical "Delete" buttons.
+          accessibilityLabel={`Delete the session from ${when}, ${contents}`}
+          hitSlop={8}
+          style={{ minHeight: 44, justifyContent: 'center' }}
+        >
+          <Type variant="caption" tone="negative">
+            Delete this session
+          </Type>
+        </Pressable>
       </Stack>
     </View>
   );

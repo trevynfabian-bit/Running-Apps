@@ -62,6 +62,15 @@ interface CompositionSessionsValue {
   discard: (pointId: string) => void;
   /** Clear the active session — used when it has been filed or abandoned. */
   reset: () => void;
+  /**
+   * Delete one whole session, active or filed.
+   *
+   * Everything in it goes together: a session is the unit an athlete decided
+   * to record and the unit they decide to remove, and leaving its measurements
+   * behind after deleting its photos would be a partial deletion nobody asked
+   * for.
+   */
+  removeSession: (sessionId: string) => void;
   /** The value already recorded for a point in the active session, if any. */
   recorded: (pointId: string) => BodyMeasurement | undefined;
 }
@@ -158,6 +167,15 @@ export function CompositionSessionsProvider({
 
   const reset = useCallback(() => setActive(undefined), []);
 
+  const removeSession = useCallback((sessionId: string) => {
+    setActive((current) => (current?.id === sessionId ? undefined : current));
+    setHistory((current) => {
+      const next = current.filter((session) => session.id !== sessionId);
+      // Same array when nothing matched, so React skips the render.
+      return next.length === current.length ? current : next;
+    });
+  }, []);
+
   const recorded = useCallback(
     (pointId: string) => (active ? measurementForPoint(active, pointId) : undefined),
     [active],
@@ -166,8 +184,19 @@ export function CompositionSessionsProvider({
   const all = useMemo(() => (active ? [active, ...history] : history), [active, history]);
 
   const value = useMemo(
-    () => ({ active, history, all, record, amend, remove, discard, reset, recorded }),
-    [active, history, all, record, amend, remove, discard, reset, recorded],
+    () => ({
+      active,
+      history,
+      all,
+      record,
+      amend,
+      remove,
+      removeSession,
+      discard,
+      reset,
+      recorded,
+    }),
+    [active, history, all, record, amend, remove, removeSession, discard, reset, recorded],
   );
 
   return (
