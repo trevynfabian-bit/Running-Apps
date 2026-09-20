@@ -54,3 +54,19 @@ export const tokenExpired = (provider: string): ApiError =>
     API_ERROR_CODES.TOKEN_EXPIRED,
     `Your ${provider} authorization has expired. Reconnect ${provider} to resume syncing.`,
   );
+
+export const photoTooLarge = (maxBytes: number): ApiError =>
+  new ApiError(
+    413,
+    API_ERROR_CODES.VALIDATION_FAILED,
+    `That photo is too large. Please use an image under ${Math.floor(maxBytes / (1024 * 1024))} MB.`,
+    { maxBytes },
+  );
+
+export const unsupportedPhotoType = (received: string, supported: readonly string[]): ApiError =>
+  new ApiError(
+    415,
+    API_ERROR_CODES.VALIDATION_FAILED,
+    'That file type is not supported. Please use a JPEG, PNG, HEIC or WebP photo.',
+    { received, supported },
+  );

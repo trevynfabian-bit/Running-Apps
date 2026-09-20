@@ -27,6 +27,15 @@ const envSchema = z.object({
 
   USE_MOCK_DATA: booleanish.default(true),
 
+  /** Where composition photos are written by the filesystem storage driver. */
+  PHOTO_STORAGE_DIR: z.string().default('.data/photos'),
+  /** Largest single photo accepted, in bytes. A phone portrait is well under. */
+  PHOTO_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(12 * 1024 * 1024),
+
   STRAVA_CLIENT_ID: z.string().optional(),
   STRAVA_CLIENT_SECRET: z.string().optional(),
   STRAVA_REDIRECT_URI: z.string().optional(),
