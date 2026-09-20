@@ -210,3 +210,82 @@ describe('POST /api/composition/sessions', () => {
     expect(keys.size).toBe(8);
   });
 });
+
+describe('GET /api/composition/sessions', () => {
+  async function list(query = '', auth = token): Promise<Response> {
+    return app.request(`/api/composition/sessions${query}`, {
+      headers: { authorization: `Bearer ${auth}` },
+    });
+  }
+
+  it('returns the athlete sessions newest first', async () => {
+    for (const capturedAt of [
+      '2026-06-14T07:30:00.000Z',
+      '2026-09-06T07:45:00.000Z',
+      '2026-07-12T07:15:00.000Z',
+    ]) {
+      await post(sessionForm({}, { capturedAt }));
+    }
+
+    const body = (await (await list()).json()) as { sessions: { capturedAt: string }[] };
+    const times = body.sessions.map((session) => Date.parse(session.capturedAt));
+
+    expect(times).toEqual([...times].sort((a, b) => b - a));
+  });
+
+  it('returns each session four photos in a stable side order', async () => {
+    const created = (await (await post(sessionForm())).json()) as { id: string };
+
+    const body = (await (await list()).json()) as {
+      sessions: { id: string; photos: { side: string; url: string; id: string }[] }[];
+    };
+    const session = body.sessions.find((s) => s.id === created.id);
+
+    // Not insertion order: the app lays the set out the same way every time.
+    expect(session?.photos.map((p) => p.side)).toEqual(['front', 'back', 'left', 'right']);
+    for (const photo of session!.photos) {
+      expect(photo.url).toBe(`/api/composition/sessions/${created.id}/photos/${photo.id}`);
+    }
+  });
+
+  it('never shows one athlete the photos of another', async () => {
+    const mine = (await (await post(sessionForm())).json()) as { id: string };
+
+    const signUp = await app.request('/api/auth/signup', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: 'someone-else@example.test',
+        password: 'a-long-enough-password',
+        displayName: 'Someone Else',
+      }),
+    });
+    const otherToken = ((await signUp.json()) as { token: string }).token;
+
+    const theirs = (await (await list('', otherToken)).json()) as { sessions: { id: string }[] };
+
+    expect(theirs.sessions).toEqual([]);
+    expect(theirs.sessions.map((s) => s.id)).not.toContain(mine.id);
+  });
+
+  it('honours a limit and clamps a silly one', async () => {
+    const one = (await (await list('?limit=1')).json()) as { sessions: unknown[] };
+    expect(one.sessions).toHaveLength(1);
+
+    // Zero and negative clamp up to one rather than returning nothing useful.
+    const zero = (await (await list('?limit=0')).json()) as { sessions: unknown[] };
+    expect(zero.sessions).toHaveLength(1);
+
+    // Garbage falls back to the default instead of becoming NaN in the query.
+    const nonsense = (await (await list('?limit=banana')).json()) as { sessions: unknown[] };
+    expect(nonsense.sessions.length).toBeGreaterThan(0);
+
+    const huge = (await (await list('?limit=99999')).json()) as { sessions: unknown[] };
+    expect(huge.sessions.length).toBeLessThanOrEqual(100);
+  });
+
+  it('requires a signed-in athlete', async () => {
+    const response = await app.request('/api/composition/sessions');
+    expect(response.status).toBe(401);
+  });
+});

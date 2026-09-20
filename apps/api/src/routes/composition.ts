@@ -14,12 +14,14 @@
  */
 
 import { Hono } from 'hono';
-import { eq } from 'drizzle-orm';
+import { desc, eq, inArray } from 'drizzle-orm';
 
 import {
   PHOTO_SIDES,
   createCompositionSessionSchema,
+  type CompositionPhotoDto,
   type CompositionSessionDto,
+  type PhotoSideDto,
 } from '@running/contracts';
 import { toLocalDate } from '@running/core';
 
@@ -41,6 +43,56 @@ export const compositionRoutes = new Hono<{ Variables: AuthVariables }>();
 /** Route that serves a photo's bytes. Clients never see a storage key. */
 function photoUrl(sessionId: string, photoId: string): string {
   return `/api/composition/sessions/${sessionId}/photos/${photoId}`;
+}
+
+/** Position of each side in the order the app lays the set out. */
+const SIDE_ORDER = new Map(PHOTO_SIDES.map((side, index) => [side as string, index]));
+
+interface SessionRow {
+  id: string;
+  capturedAt: Date;
+  localDate: string;
+  note: string | null;
+}
+
+interface PhotoRow {
+  id: string;
+  sessionId: string;
+  side: string;
+  contentType: string;
+  byteSize: number;
+  capturedAt: Date;
+}
+
+function toPhotoDto(photo: PhotoRow): CompositionPhotoDto {
+  return {
+    id: photo.id,
+    side: photo.side as PhotoSideDto,
+    contentType: photo.contentType,
+    byteSize: photo.byteSize,
+    capturedAt: photo.capturedAt.toISOString(),
+    url: photoUrl(photo.sessionId, photo.id),
+  };
+}
+
+/**
+ * Shape one session for the wire.
+ *
+ * Photos come back in front/back/left/right order rather than however the rows
+ * happened to be written, so the app can lay the set out the same way every
+ * time — including for a session where one side was retaken and its row is
+ * newer than the rest.
+ */
+function toSessionDto(session: SessionRow, photos: readonly PhotoRow[]): CompositionSessionDto {
+  return {
+    id: session.id,
+    capturedAt: session.capturedAt.toISOString(),
+    localDate: session.localDate,
+    ...(session.note ? { note: session.note } : {}),
+    photos: [...photos]
+      .sort((a, b) => (SIDE_ORDER.get(a.side) ?? 99) - (SIDE_ORDER.get(b.side) ?? 99))
+      .map(toPhotoDto),
+  };
 }
 
 /** Everything in the form that is not a file. */
@@ -154,20 +206,10 @@ compositionRoutes.post('/sessions', async (c) => {
         .returning();
     });
 
-    const body: CompositionSessionDto = {
-      id: sessionId,
-      capturedAt: capturedAt.toISOString(),
-      localDate,
-      ...(parsed.data.note ? { note: parsed.data.note } : {}),
-      photos: photos.map((photo) => ({
-        id: photo.id,
-        side: photo.side as CompositionSessionDto['photos'][number]['side'],
-        contentType: photo.contentType,
-        byteSize: photo.byteSize,
-        capturedAt: photo.capturedAt.toISOString(),
-        url: photoUrl(sessionId, photo.id),
-      })),
-    };
+    const body = toSessionDto(
+      { id: sessionId, capturedAt, localDate, note: parsed.data.note ?? null },
+      photos,
+    );
 
     logger.info('composition.session_created', { sessionId, photos: body.photos.length });
     return c.json(body, 201);
@@ -184,4 +226,56 @@ compositionRoutes.post('/sessions', async (c) => {
     });
     throw error;
   }
+});
+
+/**
+ * The athlete's sessions, newest first.
+ *
+ * Scoped to the caller's athlete id in the query itself, not filtered after
+ * the fact — a list endpoint is exactly where another athlete's body photos
+ * would leak if the scope lived anywhere but the WHERE clause.
+ *
+ * Photos are fetched in one query keyed by the session ids actually loaded.
+ * Both alternatives are worse: a query per session is N+1, and reading the
+ * whole photo table to group it in memory grows with every athlete on the
+ * instance rather than with the page being served.
+ */
+compositionRoutes.get('/sessions', async (c) => {
+  const athleteId = c.get('athleteId');
+
+  const requested = Number(c.req.query('limit') ?? 20);
+  // A non-numeric limit falls back rather than turning the query into NaN.
+  const limit = Number.isFinite(requested) ? Math.min(Math.max(Math.trunc(requested), 1), 100) : 20;
+
+  const { db } = await getDb();
+
+  const sessions = await db
+    .select()
+    .from(bodyCompositionSessions)
+    .where(eq(bodyCompositionSessions.athleteId, athleteId))
+    .orderBy(desc(bodyCompositionSessions.capturedAt))
+    .limit(limit);
+
+  if (sessions.length === 0) return c.json({ sessions: [] });
+
+  const photos = await db
+    .select()
+    .from(compositionPhotos)
+    .where(
+      inArray(
+        compositionPhotos.sessionId,
+        sessions.map((session) => session.id),
+      ),
+    );
+
+  const bySession = new Map<string, PhotoRow[]>();
+  for (const photo of photos) {
+    const list = bySession.get(photo.sessionId) ?? [];
+    list.push(photo);
+    bySession.set(photo.sessionId, list);
+  }
+
+  return c.json({
+    sessions: sessions.map((session) => toSessionDto(session, bySession.get(session.id) ?? [])),
+  });
 });
