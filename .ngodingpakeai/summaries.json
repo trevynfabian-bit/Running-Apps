@@ -408,7 +408,7 @@
     "summary": "Konfigurasi Metro untuk monorepo pnpm: watchFolders ke root workspace agar perubahan packages/* memicu reload, nodeModulesPaths app dan root, hierarchical lookup tetap aktif untuk layout symlink pnpm, dan resolveRequest kustom yang menulis ulang specifier relatif berakhiran .js ke file .ts, .tsx, .mts, atau .cts yang ada di disk sehingga package bersama tetap memakai import ESM yang benar."
   },
   "apps/mobile/app/_layout.tsx": {
-    "summary": "Layout akar Expo Router untuk apps/mobile. Membungkus aplikasi dengan GestureHandlerRootView, SafeAreaProvider, ThemeProvider, SessionProvider, MeasurementUnitProvider, dan CompositionSessionsProvider, lalu merender RootNavigator yang menggerbangi rute berdasarkan status sesi dan status onboarding. Mendaftarkan rute (tabs), connections, workout/[id], composition/measurements, dan modal why."
+    "summary": "Layout akar Expo Router untuk apps/mobile. Membungkus aplikasi dengan GestureHandlerRootView, SafeAreaProvider, ThemeProvider, SessionProvider, MeasurementUnitProvider, dan CompositionSessionsProvider, lalu merender RootNavigator yang menggerbangi rute berdasarkan status sesi dan onboarding. Mendaftarkan rute (tabs), connections, workout/[id], composition/measurements, composition/body-fat, composition/compare, dan modal why."
   },
   "apps/mobile/app/(tabs)/_layout.tsx": {
     "summary": "Layout tab bawah dengan lima tujuan yang memetakan lima pertanyaan produk: index (Home, apa sekarang), plan (apa berikutnya), train (lakukan), progress (apakah membaik), coach (mengapa). Ikon berupa glyph teks tanpa paket ikon; warna dari useTheme."
@@ -891,27 +891,7 @@
     "summary": "Komputasi zona latihan yang tidak pernah mencampur metodologi. Zone dan ZoneSet (methodology, kind heart_rate atau pace, basis, note). ZONE_DEFINITIONS lima zona dengan batas untuk max_hr_percent, hr_reserve (Karvonen), dan threshold_hr; computeHeartRateZones melempar bila anchor yang dibutuhkan tidak ada dan membuat zona teratas terbuka ke atas. selectHeartRateMethodology memilih metodologi yang datanya tersedia dengan urutan fallback threshold, reserve, max. computePaceZones dari threshold pace lewat PACE_ZONE_DEFINITIONS. zoneForHeartRate, zoneForPace, dan zoneDistribution (fraksi waktu per zona dari stream sampel)."
   },
   "packages/core/src/units/index.ts": {
-    "summary": "Konversi dan pemformatan satuan untuk @running/core dengan satuan kanonis internal: meter, detik, detik per kilometer, meter per detik, dan kilogram. Berisi helper jarak dan pace (kmToMeters, metersToMiles, speedToPace, computePace), pemformatan (formatDuration, formatPace, formatDistance, formatSignedDuration), parser parseDuration, serta blok lingkar tubuh dengan tipe LengthUnit (cm/in), CM_PER_INCH, convertLength, toCanonicalLength, fromCanonicalLength, formatLength, formatCanonicalLength, dan parseLength.",
-    "sections": [
-      {
-        "symbol": "distance and pace helpers",
-        "startLine": 20,
-        "endLine": 60,
-        "summary": "Konversi jarak meter/kilometer/mil dan konversi dua arah antara pace detik per kilometer dengan kecepatan meter per detik; mengembalikan undefined untuk nilai non-positif."
-      },
-      {
-        "symbol": "formatting and parsing",
-        "startLine": 62,
-        "endLine": 137,
-        "summary": "Pemformatan durasi, pace, rentang pace, dan jarak untuk tampilan atlet, plus parseDuration yang menolak input tak valid alih-alih menebak."
-      },
-      {
-        "symbol": "body circumference length",
-        "startLine": 139,
-        "endLine": 215,
-        "summary": "Blok lingkar tubuh: LengthUnit cm/in dengan sentimeter sebagai unit penyimpanan kanonis, convertLength dan pasangan toCanonicalLength/fromCanonicalLength, formatLength satu desimal, serta parseLength yang menerima pemisah koma dan menolak nol, negatif, dan input bersatuan."
-      }
-    ]
+    "summary": "Konversi dan pemformatan satuan @running/core dengan satuan kanonis meter, detik, detik per kilometer, dan kilogram. Berisi helper jarak dan pace, pemformatan durasi dan jarak, blok lingkar tubuh dengan LengthUnit cm/in beserta konversi dan formatSignedLength, serta blok massa tubuh dengan MassUnit kg/lb, KG_PER_POUND, konversi dua arah, formatMass, parseMass, dan massUnitForLengthUnit yang menyemai satuan berat dari satuan pita ukur."
   },
   "packages/core/src/util/stats.ts": {
     "summary": "Helper statistik yang total (input kosong mengembalikan undefined, bukan melempar): mean, sum, stdDev populasi, median, ewma dengan alpha 2 dibagi N plus 1, linearRegression (slope, intercept, r2), clamp, lerp, scaleClamped untuk memetakan sinyal mentah ke sub-skor 0 sampai 100, percentChange, round, coefficientOfVariation, dan compact."
@@ -944,7 +924,7 @@
     "summary": "Test computeHeartRateZones (lima zona kontigu naik, batas berbeda antara persen max dan HR reserve, Karvonen memperhitungkan resting HR, menolak tanpa resting HR dan input tidak masuk akal, mencatat anchor), selectHeartRateMethodology (hormati preferensi, fallback, threshold diutamakan), zoneForHeartRate (penempatan, di atas max ke zona teratas, di bawah zona 1 undefined, melempar untuk pace set), computePaceZones (urutan lambat ke cepat, threshold di zona threshold, pace sangat cepat ke zona teratas, tolak non-positif), zoneDistribution (jumlah satu, nol tanpa HR, stream kosong)."
   },
   "packages/core/src/units/index.test.ts": {
-    "summary": "Uji Vitest untuk modul satuan @running/core. Mencakup round-trip pace dan kecepatan, perhitungan pace dari jarak dan durasi, pemformatan durasi/pace/jarak, parseDuration menolak input malformed, serta blok lingkar tubuh: round-trip cm dan inci, konversi memakai definisi inci eksak, penyimpanan kanonis dalam sentimeter, pemformatan satu desimal, dan parseLength menolak nilai yang bukan lingkar terukur."
+    "summary": "Uji Vitest untuk modul satuan @running/core. Mencakup round-trip pace dan kecepatan, pemformatan durasi, pace, dan jarak, parseDuration menolak input malformed, blok lingkar tubuh dengan konversi cm dan inci memakai definisi eksak serta formatSignedLength, dan blok massa tubuh dengan konversi kg dan pon memakai pon internasional, pemformatan satu desimal, serta massUnitForLengthUnit."
   },
   "packages/core/src/util/time.test.ts": {
     "summary": "Test waktu: toLocalDate (hari lokal bukan UTC, lintas date line, timezone di belakang UTC), addDaysToLocalDate (tambah dan kurang, lintas bulan dan tahun, leap day, tanpa drift DST), daysBetweenLocalDates termasuk lintas DST, startOfWeek (Senin, Minggu sebagai akhir minggu, idempoten), isoWeekKey (sortable, sama untuk satu minggu, beda antar minggu), localDateRange, localDayOfWeek, overlapSeconds."
@@ -979,7 +959,7 @@
     ]
   },
   "apps/mobile/src/lib/body-composition.ts": {
-    "summary": "Tipe klien dan data tiruan untuk modul Komposisi Tubuh di apps/mobile, dipakai selama lapisan frontend dibangun sebelum API tersedia. Mendefinisikan CircumferencePoint dan BodyMeasurement sesuai kontrak PRD, konstanta STUB_CIRCUMFERENCE_POINTS berisi tujuh titik ukur beserta petunjuk posisi pita, dan helper findPoint. BodyMeasurement menyimpan valueCm kanonis sekaligus recordedUnit agar nilai lama tetap ditampilkan dalam satuan saat dicatat."
+    "summary": "Tipe klien dan data tiruan modul Komposisi Tubuh di apps/mobile. Mendefinisikan CircumferencePoint dan BodyMeasurement dengan valueCm kanonis plus recordedUnit, PHOTO_SIDES dengan SIDE_LABELS dan CompositionPhoto yang uri-nya opsional karena berkas berada di server, konstanta STUB_CIRCUMFERENCE_POINTS berisi tujuh titik ukur beserta petunjuk pita, dan helper findPoint."
   },
   "apps/mobile/app/composition/measurements.tsx": {
     "summary": "Layar Expo Router /composition/measurements untuk fitur Catat Lingkar Tubuh di apps/mobile. Menggabungkan toggle satuan bawaan, pemilih titik ukur dengan petunjuk pita, input nilai berdraft per titik, ringkasan sesi, dan riwayat per titik yang bisa dikoreksi. Nilai disimpan ke sesi aktif lewat useCompositionSessions sebagai sentimeter kanonis, sementara satuan yang dibaca atlet ikut dicatat.",
@@ -1016,27 +996,7 @@
     "summary": "Uji Vitest untuk draft pengukuran per titik ukur di apps/mobile. Memastikan nilai bertahan saat berpindah titik dan kembali, titik yang belum disentuh tetap kosong, satuan ikut bersama draft, patch digabung bukan menimpa, draft kosong dibuang, clearDraft hanya mengenai satu titik, dan fungsi-fungsinya tidak pernah memutasi map masukan."
   },
   "apps/mobile/src/lib/composition-session.ts": {
-    "summary": "Model murni sesi komposisi tubuh untuk apps/mobile beserta aturan pengisiannya. Mengekspor BodyCompositionSession, createSession, addMeasurement, amendMeasurement, removeMeasurement, measurementForPoint, measuredPointIds, isSessionEmpty, dan summariseSession. Aturan utamanya: satu sesi memuat paling banyak satu nilai per titik ukur, sehingga pengukuran ulang mengganti nilai sebelumnya, dan koreksi nilai tidak pernah mengubah capturedAt.",
-    "sections": [
-      {
-        "symbol": "addMeasurement",
-        "startLine": 36,
-        "endLine": 52,
-        "summary": "Menambahkan pengukuran ke depan daftar sambil membuang nilai lama untuk titik ukur yang sama, sehingga sesi hanya menyimpan nilai terakhir per titik."
-      },
-      {
-        "symbol": "amendMeasurement",
-        "startLine": 54,
-        "endLine": 85,
-        "summary": "Mengoreksi nilai dan satuan sebuah pengukuran dengan mempertahankan id dan capturedAt; titik yang belum punya pengukuran dibiarkan apa adanya."
-      },
-      {
-        "symbol": "summariseSession",
-        "startLine": 120,
-        "endLine": 175,
-        "summary": "Membangun ringkasan sesi berisi satu baris per titik ukur dalam urutan sortOrder, lengkap dengan measuredCount, totalPoints, dan isComplete; titik yang belum diukur tetap muncul sebagai baris kosong."
-      }
-    ]
+    "summary": "Model murni sesi komposisi tubuh untuk apps/mobile. Mengekspor BodyCompositionSession yang kini membawa measurements dan photos, createSession, addMeasurement, amendMeasurement, removeMeasurement, measurementForPoint, photoForSide, hasPhotos, isSessionEmpty, dan summariseSession. Aturan utamanya satu nilai per titik ukur per sesi dan koreksi nilai tidak pernah mengubah capturedAt."
   },
   "apps/mobile/src/lib/composition-session.test.ts": {
     "summary": "Uji Vitest untuk model sesi komposisi tubuh di apps/mobile. Mencakup sesi baru yang kosong dan berstempel waktu mulai, pengukuran tersimpan terbaru-dulu, pengukuran ulang mengganti bukan menambah, koreksi nilai mempertahankan id dan capturedAt, penghapusan satu titik tidak mengganggu titik lain dan membuat sesi kosong bila itu satu-satunya, serta ringkasan sesi yang menampilkan titik belum terukur sebagai celah."
@@ -1062,39 +1022,13 @@
     "summary": "Menyusun riwayat satu titik ukur dari kumpulan sesi komposisi tubuh di apps/mobile. Mengekspor tipe MetricHistoryEntry serta historyForPoint dan latestForPoint. Pengurutan terbaru-dulu dan perhitungan changeCm didelegasikan ke withChanges dari @running/core, fungsi yang sama dipakai API, sehingga angka selisih di layar dan dari server identik secara konstruksi. Sesi yang tidak mengukur titik tersebut dilewati."
   },
   "apps/mobile/src/lib/composition-history-stub.ts": {
-    "summary": "Data tiruan sesi komposisi tubuh masa lalu untuk apps/mobile, berdiri sebagai pengganti endpoint riwayat selama lapisan frontend dibangun. Mengekspor STUB_SESSION_HISTORY berisi empat sesi selama tiga bulan dengan lingkar pinggang menurun, satu sesi yang diukur memakai pita inci, dan satu sesi yang melewatkan titik paha agar kasus tersebut ikut terlihat di UI."
+    "summary": "Data tiruan riwayat komposisi tubuh untuk apps/mobile selama frontend dibangun. STUB_SESSION_HISTORY berisi empat sesi selama tiga bulan dengan satu sesi diukur memakai pita inci, satu sesi melewatkan titik paha, dan satu sesi sengaja tanpa foto. STUB_WEIGHT_KG dan STUB_BODY_FAT_PERCENT berbentuk sama dengan sumber aslinya, yaitu body.weightKilograms pada endpoint progress dan baris body_fat_estimates."
   },
   "apps/mobile/src/lib/composition-history.test.ts": {
     "summary": "Uji Vitest untuk riwayat per titik ukur di apps/mobile. Memastikan urutan terbaru-dulu terlepas dari urutan masukan, changeCm dihitung terhadap sesi lebih lama berikutnya, entri tertua tanpa changeCm dibedakan dari perubahan nol, sesi yang melewatkan titik dilompati beserta selisihnya, perubahan tetap benar melintasi pergantian satuan, dan data tiruan STUB_SESSION_HISTORY memenuhi bentuk yang dipakai UI."
   },
   "apps/mobile/src/components/composition.tsx": {
-    "summary": "Komponen tampilan khusus domain komposisi tubuh untuk apps/mobile. Mengekspor SessionSummaryCard (satu baris per titik ukur termasuk yang belum terukur, dengan hitungan cakupan dan bar progres), MetricHistoryCard (riwayat satu titik dengan selisih antar sesi serta koreksi dan penghapusan nilai di tempat), dan UnitToggle (segmented control cm/inci). Arah perubahan ditampilkan tanpa penilaian baik/buruk karena aplikasi tidak tahu target atlet.",
-    "sections": [
-      {
-        "symbol": "SessionSummaryCard",
-        "startLine": 24,
-        "endLine": 105,
-        "summary": "Kartu ringkasan sesi: menampilkan jumlah titik terukur dari total, waktu mulai sesi, bar cakupan yang disembunyikan dari screen reader, dan satu baris per titik ukur."
-      },
-      {
-        "symbol": "MetricHistoryCard",
-        "startLine": 215,
-        "endLine": 265,
-        "summary": "Daftar riwayat satu titik ukur; tiap baris menyatakan selisih terhadap sesi sebelumnya dan dapat dibuka menjadi editor koreksi."
-      },
-      {
-        "symbol": "CorrectionEditor",
-        "startLine": 330,
-        "endLine": 470,
-        "summary": "Editor inline untuk mengoreksi atau menghapus nilai: terbuka pada angka dan satuan asli, menolak menulis ulang bila tidak ada perubahan, dan meminta konfirmasi Alert sebelum menghapus."
-      },
-      {
-        "symbol": "UnitToggle",
-        "startLine": 475,
-        "endLine": 540,
-        "summary": "Segmented control dua opsi cm/inci dengan peran aksesibilitas radiogroup, dipakai oleh form entri dan editor koreksi."
-      }
-    ]
+    "summary": "Komponen tampilan domain komposisi tubuh untuk apps/mobile. Mengekspor SessionSummaryCard, MetricHistoryCard dengan editor koreksi dan penghapusan, SegmentedChoice dan UnitToggle, BodyFatRange dengan RangeBand dan NonMedicalNotice, VariantPicker, QuantityField, RequirementList, FormulaSteps yang menampilkan setiap langkah perhitungan, ServiceStatusNotice yang selalu menawarkan jalur rumus, serta PhotoComparison yang memasangkan foto per sisi."
   },
   "apps/api/src/services/photo-storage.ts": {
     "summary": "Layanan penyimpanan foto komposisi tubuh untuk @running/api dengan satu interface PhotoStorage dan driver filesystem. Mengekspor PHOTO_SIDES, validatePhotoUpload, photoStorage, dan resetPhotoStorageForTesting. Kunci penyimpanan selalu dibuat server dengan komponen acak, tipe konten diverifikasi lewat signature byte JPEG/PNG/WebP/HEIC (SVG ditolak), dan penghapusan tersedia per foto, per sesi, serta per atlet.",
@@ -1155,19 +1089,19 @@
     ]
   },
   "packages/core/src/engines/composition.ts": {
-    "summary": "Engine perhitungan komposisi tubuh di @running/core, murni dan deterministik. Mengekspor tipe CompositionReading dan WithChange serta fungsi withChanges yang mengurutkan pembacaan terbaru-dulu dan melekatkan changeCm terhadap pembacaan lebih lama berikutnya, plus netChangeCm untuk perubahan bersih satu rangkaian. Dipakai bersama oleh apps/api dan apps/mobile sehingga angka selisih di server dan di aplikasi identik secara konstruksi.",
+    "summary": "Engine komposisi tubuh di @running/core, murni dan deterministik. Mengekspor withChanges dan netChangeCm untuk selisih antar pembacaan, TAPE_REPEATABILITY_CM dengan changeDirection dan isMeaningfulChange yang menyebut perubahan di bawah derau pita ukur sebagai tetap, serta estimateBodyFatNavy dengan NAVY_COEFFICIENTS dan NAVY_STANDARD_ERROR yang mengembalikan pita beserta seluruh langkah perhitungan dan melaporkan kegagalan sebagai hasil, bukan lemparan.",
     "sections": [
       {
-        "symbol": "withChanges",
-        "startLine": 33,
-        "endLine": 62,
-        "summary": "Mengurutkan pembacaan terbaru-dulu lalu menghitung changeCm terhadap tetangga lebih lama; menerima olderNeighbour untuk paginasi agar entri terlama pada satu halaman tetap punya selisih."
+        "symbol": "changeDirection",
+        "startLine": 95,
+        "endLine": 140,
+        "summary": "Mengklasifikasikan selisih menjadi naik, turun, atau tetap dengan ambang keterulangan pita ukur; tidak pernah menilai arah sebagai baik atau buruk."
       },
       {
-        "symbol": "netChangeCm",
-        "startLine": 64,
-        "endLine": 82,
-        "summary": "Perubahan bersih dari pembacaan tertua ke terbaru; mengembalikan undefined untuk kurang dari dua pembacaan karena satu pengukuran adalah posisi, bukan arah."
+        "symbol": "estimateBodyFatNavy",
+        "startLine": 215,
+        "endLine": 330,
+        "summary": "Menghitung estimasi lemak tubuh dari lingkar memakai persamaan US Navy bentuk metrik, mengembalikan pita plus langkah-langkah; menolak girth non-positif, penyebut non-positif, dan hasil di luar rentang wajar."
       }
     ]
   },
@@ -1184,12 +1118,91 @@
     "summary": "Uji Vitest kontrak komposisi tubuh di @running/contracts. Memastikan lengthUnitSchema hanya menerima cm dan in, permintaan pencatatan membawa value dan unit apa adanya tanpa nilai terkonversi, batas kewajaran menangkap titik desimal salah tempat dan mengikuti satuan yang diberikan, satu titik ukur tidak boleh muncul dua kali dalam satu payload, dan entri riwayat membedakan changeCm absen dari changeCm nol."
   },
   "packages/core/src/engines/composition.test.ts": {
-    "summary": "Uji Vitest engine komposisi di @running/core. Memastikan withChanges mengurutkan terbaru-dulu apa pun urutan masukan, melekatkan selisih terhadap pembacaan lebih lama, membiarkan entri tertua tanpa changeCm agar berbeda dari perubahan nol, memakai olderNeighbour untuk entri terlama pada satu halaman, meneruskan field tambahan pemanggil, dan tidak memutasi masukan; netChangeCm menolak menyebut satu pembacaan sebagai arah."
+    "summary": "Uji Vitest untuk engine komposisi @running/core. Mencakup withChanges beserta paginasi lewat olderNeighbour dan pembedaan tanpa pembanding dari perubahan nol, netChangeCm yang menolak menyebut satu pembacaan sebagai arah, changeDirection yang menyebut selisih di bawah keterulangan pita ukur sebagai tetap, dan estimateBodyFatNavy yang dicocokkan dengan persamaan terbitan serta menolak girth non-positif dan hasil di luar rentang wajar."
   },
   "apps/api/drizzle/0001_body_composition_photos.sql": {
     "summary": "Migrasi Drizzle 0001 yang membuat tabel body_composition_sessions dan composition_photos beserta foreign key cascade ke athlete_profiles dan ke sesi, indeks (athlete_id, captured_at) untuk pembacaan riwayat, serta indeks unik (session_id, side) dan storage_key."
   },
   "apps/api/drizzle/0002_composition_measurements.sql": {
     "summary": "Migrasi Drizzle 0002 yang membuat tabel circumference_points dan composition_measurements, dengan foreign key cascade ke sesi dan restrict ke titik ukur, indeks unik code dan (session_id, point_id), serta indeks (point_id, captured_at). Migrasi ini juga menyisipkan tujuh titik ukur referensi memakai ON CONFLICT agar pemutaran ulang tidak menimbulkan duplikat."
+  },
+  "apps/mobile/src/lib/body-fat.ts": {
+    "summary": "Tipe klien, data tiruan, dan helper untuk estimasi lemak tubuh di apps/mobile. Model BodyFatEstimate sengaja tanpa field nilai tunggal — hanya valueLow dan valueHigh — agar tidak ada pemanggil yang menampilkan satu angka seolah hasil pengukuran. Mengekspor formatRange, rangeWidth, skala BODY_FAT_SCALE dengan scalePosition dan bandGeometry untuk menggambar pita, NON_MEDICAL_NOTE sebagai satu konstanta agar tidak melunak di layar berbeda, serta aiAvailabilityMessage yang membedakan sesi tanpa foto dari layanan yang mati.",
+    "sections": [
+      {
+        "symbol": "formatRange",
+        "startLine": 60,
+        "endLine": 80,
+        "summary": "Memformat estimasi sebagai rentang satu desimal; pita berlebar nol tetap ditampilkan sebagai rentang agar tidak terbaca sebagai hasil pengukuran."
+      },
+      {
+        "symbol": "bandGeometry",
+        "startLine": 150,
+        "endLine": 185,
+        "summary": "Menghitung posisi dan lebar pita pada trek; nilai di luar skala dijepit ke tepi dan pita yang membulat ke nol tetap diberi lebar minimum."
+      },
+      {
+        "symbol": "aiAvailabilityMessage",
+        "startLine": 200,
+        "endLine": 265,
+        "summary": "Menentukan pesan status jalur foto: sesi tanpa foto, layanan tak tersedia, atau gagal; setiap kondisi yang tidak bisa menghasilkan hasil selalu menawarkan jalur rumus."
+      }
+    ]
+  },
+  "apps/mobile/src/lib/body-fat-inputs.ts": {
+    "summary": "Model input pendukung rumus lingkar untuk apps/mobile: varian koefisien, tinggi, dan berat. Pilihan varian dibingkai sebagai memilih salah satu dari dua persamaan terbitan beserta apa yang dibaca masing-masing, bukan sebagai pernyataan tentang atlet. Mengekspor formulaRequirements yang mengembalikan seluruh syarat beserta status terpenuhinya, canRunFormula, outstanding, serta batas kewajaran tinggi dan berat sebagai penjaga salah ketik."
+  },
+  "apps/mobile/src/lib/photo-estimate-stub.ts": {
+    "summary": "Simulasi layanan pembacaan foto untuk apps/mobile agar seluruh alur AI bisa dibangun sebelum backend ada. Mengekspor simulatedPhotoBand yang deterministik dari id sesi, requestPhotoEstimate dengan latensi dan cache, cachedPhotoEstimate, dan clearPhotoEstimateCache. Dua aturan produk tertanam: satu pembacaan per sesi karena analisis ulang foto yang sama di luar lingkup, dan PHOTO_MARGIN sengaja lebih lebar daripada galat baku rumus karena foto adalah sinyal yang lebih lemah."
+  },
+  "apps/mobile/src/lib/composition-compare.ts": {
+    "summary": "Logika membandingkan dua sesi komposisi tubuh di apps/mobile. Mengekspor orderSessions, daysBetween, compareSessions, totalChangeCm, comparePhotos, RANGE_PRESETS dengan sessionsInRange dan resolveRange, selectSlot, serta summariseComparison dan summaryHeadline. Titik ukur yang hanya diukur di salah satu sesi tidak pernah dilaporkan sebagai perubahan nol, dan perubahan di bawah TAPE_REPEATABILITY_CM dihitung sebagai tetap.",
+    "sections": [
+      {
+        "symbol": "compareSessions",
+        "startLine": 70,
+        "endLine": 115,
+        "summary": "Menyusun satu baris per titik ukur dalam urutan anatomis dengan nilai kedua sesi; changeCm hanya ada bila kedua sisi terukur."
+      },
+      {
+        "symbol": "resolveRange",
+        "startLine": 190,
+        "endLine": 215,
+        "summary": "Mengubah rentang waktu menjadi pasangan sesi terlebar di dalam jendela; mengembalikan undefined bila jendela memuat kurang dari dua sesi."
+      },
+      {
+        "symbol": "summariseComparison",
+        "startLine": 290,
+        "endLine": 345,
+        "summary": "Memilah baris menjadi yang bergerak melampaui derau pita ukur, yang tetap, yang hanya ada di satu sesi, dan yang tidak pernah diukur; pergerakan diurutkan berdasar besarnya."
+      }
+    ]
+  },
+  "apps/mobile/src/lib/composition-trends.ts": {
+    "summary": "Penyusun seri untuk grafik tren komposisi tubuh di apps/mobile. buildTrendSeries mengembalikan satu metrik saja — lingkar dalam sentimeter, berat dalam kilogram, atau estimasi lemak sebagai pita persen — karena menggabungkan dua skala pada satu plot akan mengarang korelasi. trendExtent memberi ruang di atas dan bawah data, tidak berjangkar ke nol, dan memberi seri datar pita nominal alih-alih membagi nol."
+  },
+  "apps/mobile/src/components/trend-chart.tsx": {
+    "summary": "Komponen grafik garis react-native-svg untuk satu metrik komposisi tubuh di apps/mobile. Satu seri tanpa legenda karena judul sudah menamainya, tanpa angka pada setiap titik, garis dasar hairline solid, penanda dengan cincin warna permukaan, dan estimasi lemak digambar sebagai pita terisi bukan garis. Menyentuh kolom mana pun membaca satu sesi; target sentuh setinggi kolom penuh agar mudah dikenai."
+  },
+  "apps/mobile/app/composition/body-fat.tsx": {
+    "summary": "Layar Expo Router /composition/body-fat untuk fitur Perkiraan Lemak Tubuh di apps/mobile. Menampilkan hasil sebagai pita dengan label keyakinan, pemilih metode rumus atau foto, form input varian koefisien dengan tinggi dan berat, daftar syarat yang sudah dan belum terpenuhi, panel langkah perhitungan US Navy dari @running/core, status layanan foto beserta tombol beralih ke jalur rumus, dan catatan non-medis."
+  },
+  "apps/mobile/app/composition/compare.tsx": {
+    "summary": "Layar Expo Router /composition/compare untuk fitur Perbandingan Antar-Sesi di apps/mobile. Menyediakan pemilih dua sesi atau rentang waktu, grafik tren satu metrik dengan pemilih titik ukur serta berat dan lemak, perbandingan foto empat sisi berdampingan, ringkasan perubahan yang memisahkan pergerakan nyata dari derau pita ukur, dan daftar selisih per titik ukur dengan arah tanpa penilaian baik atau buruk."
+  },
+  "apps/mobile/src/lib/body-fat.test.ts": {
+    "summary": "Uji Vitest untuk model estimasi lemak tubuh di apps/mobile. Memastikan hasil selalu diformat sebagai pita dan tidak pernah satu angka, pita berlebar nol tetap tampil sebagai pita, geometri pita menjepit nilai di luar skala ke tepi, estimasi tidak pernah berlabel yakin tinggi, foto tidak diklaim lebih tajam daripada pita ukur, dan aiAvailabilityMessage membedakan sesi tanpa foto dari layanan mati sambil selalu menawarkan jalur rumus."
+  },
+  "apps/mobile/src/lib/body-fat-inputs.test.ts": {
+    "summary": "Uji Vitest untuk syarat input rumus lingkar di apps/mobile. Memastikan batas kewajaran menangkap tinggi yang diketik dalam meter dan berat bersatuan salah, daftar syarat memuat yang sudah terpenuhi maupun yang belum, lingkar tidak diminta sebelum varian koefisien dipilih, hips hanya diminta oleh varian yang membacanya, dan pembingkaian pilihan varian menjelaskan apa yang dibaca persamaan alih-alih menyatakan sesuatu tentang atlet."
+  },
+  "apps/mobile/src/lib/photo-estimate-stub.test.ts": {
+    "summary": "Uji Vitest untuk simulasi pembacaan foto di apps/mobile. Memastikan sesi yang sama selalu menghasilkan pita yang sama, pembacaan di-cache sehingga tidak ada analisis ulang, cache dikembalikan tanpa menunggu, kegagalan tidak di-cache sehingga percobaan ulang sah, estimasi foto tidak pernah melebihi keyakinan rendah, dan marginnya lebih lebar daripada galat baku rumus."
+  },
+  "apps/mobile/src/lib/composition-compare.test.ts": {
+    "summary": "Uji Vitest untuk perbandingan dua sesi komposisi tubuh di apps/mobile. Mencakup pengurutan waktu apa pun urutan masukan, titik ukur setengah terukur yang tidak pernah dilaporkan sebagai perubahan nol, total yang menolak ada ketika tidak ada titik bersama, rentang waktu yang diselesaikan menjadi pasangan terlebar, pemilihan slot yang menukar alih-alih menduplikasi sesi, pemasangan foto empat sisi, dan ringkasan yang memisahkan pergerakan nyata dari derau pita ukur."
+  },
+  "apps/mobile/src/lib/composition-trends.test.ts": {
+    "summary": "Uji Vitest untuk penyusun seri grafik tren di apps/mobile. Memastikan tiap metrik membawa satuannya sendiri karena tidak pernah berbagi sumbu, lingkar diurut dari terlama, estimasi lemak dikembalikan sebagai pita bukan garis, jendela waktu dipatuhi, metrik tanpa data mengembalikan undefined alih-alih sumbu kosong, sumbu tidak berjangkar ke nol, dan seri datar mendapat pita nominal alih-alih membagi nol."
   }
 }

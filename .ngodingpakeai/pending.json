@@ -1,6 +1,6 @@
 {
   "repo": "trevynfabian-bit/Running-Apps",
-  "generatedForCommit": "2cef0136932699ed4500a7ac5f628462a94c2f81",
+  "generatedForCommit": "0cd1f476e9738a20d238663c62811cd67bee712c",
   "files": [
     {
       "path": ".claude/skills/ngodingpakeai/SKILL.md",
@@ -46,13 +46,13 @@
     },
     {
       "path": "apps/api/drizzle/0001_body_composition_photos.sql",
-      "reason": "new",
+      "reason": "needs_summary",
       "language": "sql",
       "size": 1738
     },
     {
       "path": "apps/api/drizzle/0002_composition_measurements.sql",
-      "reason": "new",
+      "reason": "needs_summary",
       "language": "sql",
       "size": 3199
     },
@@ -64,19 +64,19 @@
     },
     {
       "path": "apps/api/drizzle/meta/0001_snapshot.json",
-      "reason": "new",
+      "reason": "needs_summary",
       "language": "json",
       "size": 113789
     },
     {
       "path": "apps/api/drizzle/meta/0002_snapshot.json",
-      "reason": "new",
+      "reason": "needs_summary",
       "language": "json",
       "size": 119721
     },
     {
       "path": "apps/api/drizzle/meta/_journal.json",
-      "reason": "changed",
+      "reason": "needs_summary",
       "language": "json",
       "size": 501
     },
@@ -99,12 +99,6 @@
       "size": 23786
     },
     {
-      "path": "apps/api/src/app.ts",
-      "reason": "changed",
-      "language": "typescript",
-      "size": 3985
-    },
-    {
       "path": "apps/api/src/db/client.ts",
       "reason": "needs_summary",
       "language": "typescript",
@@ -112,7 +106,7 @@
     },
     {
       "path": "apps/api/src/db/composition-schema.test.ts",
-      "reason": "new",
+      "reason": "needs_summary",
       "language": "typescript",
       "size": 13518
     },
@@ -123,20 +117,14 @@
       "size": 1751
     },
     {
-      "path": "apps/api/src/db/schema.ts",
-      "reason": "changed",
-      "language": "typescript",
-      "size": 36974
-    },
-    {
       "path": "apps/api/src/env.ts",
-      "reason": "changed",
+      "reason": "needs_summary",
       "language": "typescript",
       "size": 3594
     },
     {
       "path": "apps/api/src/errors.ts",
-      "reason": "changed",
+      "reason": "needs_summary",
       "language": "typescript",
       "size": 2411
     },
@@ -220,13 +208,13 @@
     },
     {
       "path": "apps/api/src/routes/composition.test.ts",
-      "reason": "new",
+      "reason": "needs_summary",
       "language": "typescript",
       "size": 29351
     },
     {
       "path": "apps/api/src/routes/composition.ts",
-      "reason": "new",
+      "reason": "needs_summary",
       "language": "typescript",
       "size": 23442
     },
@@ -256,13 +244,13 @@
     },
     {
       "path": "apps/api/src/services/photo-storage.test.ts",
-      "reason": "new",
+      "reason": "needs_summary",
       "language": "typescript",
       "size": 10077
     },
     {
       "path": "apps/api/src/services/photo-storage.ts",
-      "reason": "new",
+      "reason": "needs_summary",
       "language": "typescript",
       "size": 11606
     },
@@ -310,9 +298,21 @@
     },
     {
       "path": "apps/mobile/app/_layout.tsx",
-      "reason": "needs_summary",
+      "reason": "changed",
       "language": "typescript",
-      "size": 2907
+      "size": 3093
+    },
+    {
+      "path": "apps/mobile/app/composition/body-fat.tsx",
+      "reason": "new",
+      "language": "typescript",
+      "size": 16241
+    },
+    {
+      "path": "apps/mobile/app/composition/compare.tsx",
+      "reason": "new",
+      "language": "typescript",
+      "size": 16391
     },
     {
       "path": "apps/mobile/app/composition/measurements.tsx",
@@ -376,9 +376,9 @@
     },
     {
       "path": "apps/mobile/src/components/composition.tsx",
-      "reason": "needs_summary",
+      "reason": "changed",
       "language": "typescript",
-      "size": 18994
+      "size": 41035
     },
     {
       "path": "apps/mobile/src/components/metrics.tsx",
@@ -391,6 +391,12 @@
       "reason": "needs_summary",
       "language": "typescript",
       "size": 10179
+    },
+    {
+      "path": "apps/mobile/src/components/trend-chart.tsx",
+      "reason": "new",
+      "language": "typescript",
+      "size": 8517
     },
     {
       "path": "apps/mobile/src/design/theme.tsx",
@@ -406,15 +412,51 @@
     },
     {
       "path": "apps/mobile/src/lib/body-composition.ts",
-      "reason": "needs_summary",
+      "reason": "changed",
       "language": "typescript",
-      "size": 2989
+      "size": 3815
+    },
+    {
+      "path": "apps/mobile/src/lib/body-fat-inputs.test.ts",
+      "reason": "new",
+      "language": "typescript",
+      "size": 5229
+    },
+    {
+      "path": "apps/mobile/src/lib/body-fat-inputs.ts",
+      "reason": "new",
+      "language": "typescript",
+      "size": 6059
+    },
+    {
+      "path": "apps/mobile/src/lib/body-fat.test.ts",
+      "reason": "new",
+      "language": "typescript",
+      "size": 7910
+    },
+    {
+      "path": "apps/mobile/src/lib/body-fat.ts",
+      "reason": "new",
+      "language": "typescript",
+      "size": 9190
+    },
+    {
+      "path": "apps/mobile/src/lib/composition-compare.test.ts",
+      "reason": "new",
+      "language": "typescript",
+      "size": 15371
+    },
+    {
+      "path": "apps/mobile/src/lib/composition-compare.ts",
+      "reason": "new",
+      "language": "typescript",
+      "size": 12733
     },
     {
       "path": "apps/mobile/src/lib/composition-history-stub.ts",
-      "reason": "needs_summary",
+      "reason": "changed",
       "language": "typescript",
-      "size": 4105
+      "size": 6251
     },
     {
       "path": "apps/mobile/src/lib/composition-history.test.ts",
@@ -424,7 +466,7 @@
     },
     {
       "path": "apps/mobile/src/lib/composition-history.ts",
-      "reason": "changed",
+      "reason": "needs_summary",
       "language": "typescript",
       "size": 3068
     },
@@ -442,9 +484,21 @@
     },
     {
       "path": "apps/mobile/src/lib/composition-session.ts",
-      "reason": "needs_summary",
+      "reason": "changed",
       "language": "typescript",
-      "size": 6405
+      "size": 7004
+    },
+    {
+      "path": "apps/mobile/src/lib/composition-trends.test.ts",
+      "reason": "new",
+      "language": "typescript",
+      "size": 5818
+    },
+    {
+      "path": "apps/mobile/src/lib/composition-trends.ts",
+      "reason": "new",
+      "language": "typescript",
+      "size": 5501
     },
     {
       "path": "apps/mobile/src/lib/measurement-draft.test.ts",
@@ -469,6 +523,18 @@
       "reason": "needs_summary",
       "language": "typescript",
       "size": 4508
+    },
+    {
+      "path": "apps/mobile/src/lib/photo-estimate-stub.test.ts",
+      "reason": "new",
+      "language": "typescript",
+      "size": 5080
+    },
+    {
+      "path": "apps/mobile/src/lib/photo-estimate-stub.ts",
+      "reason": "new",
+      "language": "typescript",
+      "size": 5357
     },
     {
       "path": "apps/mobile/src/lib/session.tsx",
@@ -580,15 +646,9 @@
     },
     {
       "path": "packages/contracts/src/composition.test.ts",
-      "reason": "new",
+      "reason": "needs_summary",
       "language": "typescript",
       "size": 5872
-    },
-    {
-      "path": "packages/contracts/src/index.ts",
-      "reason": "changed",
-      "language": "typescript",
-      "size": 31687
     },
     {
       "path": "packages/contracts/tsconfig.build.json",
@@ -658,15 +718,15 @@
     },
     {
       "path": "packages/core/src/engines/composition.test.ts",
-      "reason": "new",
+      "reason": "changed",
       "language": "typescript",
-      "size": 3456
+      "size": 10165
     },
     {
       "path": "packages/core/src/engines/composition.ts",
-      "reason": "new",
+      "reason": "changed",
       "language": "typescript",
-      "size": 2809
+      "size": 11614
     },
     {
       "path": "packages/core/src/engines/decision.test.ts",
@@ -754,21 +814,21 @@
     },
     {
       "path": "packages/core/src/index.ts",
-      "reason": "changed",
+      "reason": "needs_summary",
       "language": "typescript",
       "size": 1433
     },
     {
       "path": "packages/core/src/units/index.test.ts",
-      "reason": "needs_summary",
+      "reason": "changed",
       "language": "typescript",
-      "size": 5868
+      "size": 7944
     },
     {
       "path": "packages/core/src/units/index.ts",
-      "reason": "needs_summary",
+      "reason": "changed",
       "language": "typescript",
-      "size": 9477
+      "size": 12330
     },
     {
       "path": "packages/core/src/util/stats.ts",
