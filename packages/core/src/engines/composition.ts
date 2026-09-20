@@ -181,6 +181,8 @@ export interface NavyInputs {
   hipsCm?: number;
 }
 
+export type CircumferenceMethod = 'navy' | 'ymca';
+
 export type NavyEstimate =
   | {
       ok: true;
@@ -311,4 +313,179 @@ export function estimateBodyFatNavy(inputs: NavyInputs): NavyEstimate {
     standardError: NAVY_STANDARD_ERROR,
     steps,
   };
+}
+
+// ---------------------------------------------------------------------------
+// YMCA
+// ---------------------------------------------------------------------------
+
+/**
+ * Published coefficients for the YMCA equation.
+ *
+ * The equation is stated in inches and pounds, so the conversion happens inside
+ * the function rather than by rewriting the constants into metric — rewritten
+ * coefficients cannot be checked against the source, and a transcription error
+ * in them would be invisible.
+ */
+export const YMCA_COEFFICIENTS: Record<NavyVariant, { intercept: number }> = {
+  male: { intercept: -98.42 },
+  female: { intercept: -76.76 },
+};
+
+const YMCA_WAIST_TERM = 4.15;
+const YMCA_WEIGHT_TERM = 0.082;
+
+/**
+ * Standard error of the YMCA estimate, in percentage points.
+ *
+ * Wider than the Navy equation's. It reads two measurements rather than three
+ * and carries no height term at all, so it has less to go on and its band
+ * should say so.
+ */
+export const YMCA_STANDARD_ERROR = 4;
+
+export interface YmcaInputs {
+  variant: NavyVariant;
+  waistCm: number;
+  weightKg: number;
+}
+
+/**
+ * Estimate body fat from waist and weight using the YMCA equation.
+ *
+ * Offered alongside the Navy method because it reads a different pair of
+ * measurements: an athlete who has their weight but has not measured their neck
+ * can still get an estimate, and one who has neck and height but no scale can
+ * use the other. Neither is a fallback for the other — they are two equations
+ * with two input sets, and which one an athlete can run depends on what they
+ * measured.
+ *
+ * Same contract as the Navy function: all inputs canonical (centimetres,
+ * kilograms), every step reported, and failure returned rather than thrown.
+ */
+export function estimateBodyFatYmca(inputs: YmcaInputs): NavyEstimate {
+  const { variant, waistCm, weightKg } = inputs;
+  const steps: CalculationStep[] = [];
+  const fail = (reason: string): NavyEstimate => ({ ok: false, variant, reason, steps });
+
+  for (const [name, value] of [
+    ['waist', waistCm],
+    ['weight', weightKg],
+  ] as const) {
+    if (!Number.isFinite(value) || value <= 0) {
+      return fail(`The ${name} measurement is missing or not a usable number.`);
+    }
+  }
+
+  // The published equation is in inches and pounds; convert here rather than
+  // rewriting the constants, so they stay checkable against the source.
+  const waistInches = waistCm / 2.54;
+  steps.push({
+    label: 'Waist in inches',
+    expression: `${waistCm.toFixed(1)} ÷ 2.54`,
+    value: round(waistInches, 2),
+    unit: 'in',
+  });
+
+  const weightPounds = weightKg / 0.45359237;
+  steps.push({
+    label: 'Weight in pounds',
+    expression: `${weightKg.toFixed(1)} ÷ 0.45359237`,
+    value: round(weightPounds, 1),
+    unit: 'lb',
+  });
+
+  const intercept = YMCA_COEFFICIENTS[variant].intercept;
+  const numerator = intercept + YMCA_WAIST_TERM * waistInches - YMCA_WEIGHT_TERM * weightPounds;
+  steps.push({
+    label: 'Numerator',
+    expression: `${intercept} + ${YMCA_WAIST_TERM} × ${waistInches.toFixed(2)} − ${YMCA_WEIGHT_TERM} × ${weightPounds.toFixed(1)}`,
+    value: round(numerator, 3),
+  });
+
+  const percent = (numerator / weightPounds) * 100;
+  steps.push({
+    label: 'Body fat from the equation',
+    expression: `${numerator.toFixed(3)} ÷ ${weightPounds.toFixed(1)} × 100`,
+    value: round(percent, 1),
+    unit: '%',
+  });
+
+  if (percent < PLAUSIBLE_PERCENT.min || percent > PLAUSIBLE_PERCENT.max) {
+    return fail(
+      'The equation produced a figure outside any plausible range, which means one of the measurements is wrong rather than unusual.',
+    );
+  }
+
+  return {
+    ok: true,
+    variant,
+    valueLow: round(Math.max(PLAUSIBLE_PERCENT.min, percent - YMCA_STANDARD_ERROR), 1),
+    valueHigh: round(Math.min(PLAUSIBLE_PERCENT.max, percent + YMCA_STANDARD_ERROR), 1),
+    standardError: YMCA_STANDARD_ERROR,
+    steps,
+  };
+}
+
+export interface CircumferenceInputs {
+  variant: NavyVariant;
+  waistCm: number;
+  neckCm?: number;
+  heightCm?: number;
+  hipsCm?: number;
+  weightKg?: number;
+}
+
+/**
+ * Which circumference methods the measurements on hand can actually run.
+ *
+ * Returned in the order they should be preferred: the Navy equation reads three
+ * sites and a height and is the tighter of the two, so it leads when both are
+ * available. Neither is a fallback for the other in the sense of being worse —
+ * YMCA simply reads less, and its band says so.
+ */
+export function availableCircumferenceMethods(inputs: CircumferenceInputs): CircumferenceMethod[] {
+  const positive = (value: number | undefined): boolean =>
+    value !== undefined && Number.isFinite(value) && value > 0;
+
+  const methods: CircumferenceMethod[] = [];
+
+  const navyReady =
+    positive(inputs.waistCm) &&
+    positive(inputs.neckCm) &&
+    positive(inputs.heightCm) &&
+    (inputs.variant === 'male' || positive(inputs.hipsCm));
+  if (navyReady) methods.push('navy');
+
+  if (positive(inputs.waistCm) && positive(inputs.weightKg)) methods.push('ymca');
+
+  return methods;
+}
+
+/**
+ * Run one named circumference method.
+ *
+ * A single entry point so callers pick a method by name and get the same result
+ * shape either way, rather than branching on which function to call and then
+ * branching again on two slightly different return types.
+ */
+export function estimateBodyFat(
+  method: CircumferenceMethod,
+  inputs: CircumferenceInputs,
+): NavyEstimate {
+  if (method === 'ymca') {
+    return estimateBodyFatYmca({
+      variant: inputs.variant,
+      waistCm: inputs.waistCm,
+      weightKg: inputs.weightKg ?? Number.NaN,
+    });
+  }
+
+  return estimateBodyFatNavy({
+    variant: inputs.variant,
+    waistCm: inputs.waistCm,
+    neckCm: inputs.neckCm ?? Number.NaN,
+    heightCm: inputs.heightCm ?? Number.NaN,
+    ...(inputs.hipsCm !== undefined ? { hipsCm: inputs.hipsCm } : {}),
+  });
 }

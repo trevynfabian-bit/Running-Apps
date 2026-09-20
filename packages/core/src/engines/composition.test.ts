@@ -3,7 +3,12 @@ import { describe, expect, it } from 'vitest';
 import {
   NAVY_COEFFICIENTS,
   TAPE_REPEATABILITY_CM,
+  YMCA_COEFFICIENTS,
+  YMCA_STANDARD_ERROR,
+  availableCircumferenceMethods,
   changeDirection,
+  estimateBodyFat,
+  estimateBodyFatYmca,
   isMeaningfulChange,
   NAVY_STANDARD_ERROR,
   estimateBodyFatNavy,
@@ -292,5 +297,151 @@ describe('changeDirection', () => {
     for (const delta of [-3, -0.6, -0.4, 0, 0.4, 0.6, 3]) {
       expect(isMeaningfulChange(delta)).toBe(changeDirection(delta) !== 'steady');
     }
+  });
+});
+
+describe('estimateBodyFatYmca', () => {
+  const MALE = { variant: 'male' as const, waistCm: 86.4, weightKg: 75 };
+
+  function expectedMale(): number {
+    const waistIn = MALE.waistCm / 2.54;
+    const weightLb = MALE.weightKg / 0.45359237;
+    const numerator = YMCA_COEFFICIENTS.male.intercept + 4.15 * waistIn - 0.082 * weightLb;
+    return (numerator / weightLb) * 100;
+  }
+
+  it('matches the published equation', () => {
+    const result = estimateBodyFatYmca(MALE);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.steps.at(-1)!.value).toBeCloseTo(expectedMale(), 1);
+  });
+
+  it('lands in a believable region for those inputs', () => {
+    const result = estimateBodyFatYmca(MALE);
+    if (!result.ok) throw new Error('expected a result');
+
+    expect(result.steps.at(-1)!.value).toBeGreaterThan(10);
+    expect(result.steps.at(-1)!.value).toBeLessThan(30);
+  });
+
+  it('converts to the units the equation is published in, and shows it', () => {
+    const result = estimateBodyFatYmca(MALE);
+    if (!result.ok) throw new Error('expected a result');
+
+    // Converting here rather than rewriting the constants keeps them
+    // checkable against the source.
+    expect(result.steps[0]?.unit).toBe('in');
+    expect(result.steps[0]?.value).toBeCloseTo(34.02, 1);
+    expect(result.steps[1]?.unit).toBe('lb');
+    expect(result.steps[1]?.value).toBeCloseTo(165.3, 0);
+  });
+
+  it('uses a different intercept per coefficient set', () => {
+    const male = estimateBodyFatYmca(MALE);
+    const female = estimateBodyFatYmca({ ...MALE, variant: 'female' });
+
+    if (!male.ok || !female.ok) throw new Error('expected results');
+    expect(female.steps.at(-1)!.value).not.toBeCloseTo(male.steps.at(-1)!.value, 1);
+    expect(YMCA_COEFFICIENTS.female.intercept).not.toBe(YMCA_COEFFICIENTS.male.intercept);
+  });
+
+  it('reports a wider band than the Navy equation', () => {
+    // It reads two measurements rather than three and carries no height term,
+    // so it has less to go on and its band should say so.
+    expect(YMCA_STANDARD_ERROR).toBeGreaterThan(NAVY_STANDARD_ERROR);
+  });
+
+  it('names a missing measurement', () => {
+    for (const [field, value] of [
+      ['waistCm', 0],
+      ['weightKg', Number.NaN],
+    ] as const) {
+      const result = estimateBodyFatYmca({ ...MALE, [field]: value });
+      expect(result.ok).toBe(false);
+      if (result.ok) continue;
+      expect(result.reason).toMatch(/waist|weight/);
+    }
+  });
+
+  it('refuses a result outside any plausible range', () => {
+    const result = estimateBodyFatYmca({ variant: 'male', waistCm: 200, weightKg: 45 });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toContain('plausible');
+  });
+});
+
+describe('availableCircumferenceMethods', () => {
+  const FULL = {
+    variant: 'male' as const,
+    waistCm: 86.4,
+    neckCm: 38.1,
+    heightCm: 178,
+    weightKg: 75,
+  };
+
+  it('prefers the equation that reads more', () => {
+    expect(availableCircumferenceMethods(FULL)).toEqual(['navy', 'ymca']);
+  });
+
+  it('offers YMCA when there is a weight but no neck', () => {
+    const { neckCm: _neck, ...withoutNeck } = FULL;
+    expect(availableCircumferenceMethods(withoutNeck)).toEqual(['ymca']);
+  });
+
+  it('offers Navy when there is a neck and height but no scale', () => {
+    const { weightKg: _weight, ...withoutWeight } = FULL;
+    expect(availableCircumferenceMethods(withoutWeight)).toEqual(['navy']);
+  });
+
+  it('requires hips for the female coefficient set', () => {
+    const { weightKg: _weight, ...navyOnly } = FULL;
+    expect(availableCircumferenceMethods({ ...navyOnly, variant: 'female' })).toEqual([]);
+    expect(availableCircumferenceMethods({ ...navyOnly, variant: 'female', hipsCm: 97 })).toEqual([
+      'navy',
+    ]);
+  });
+
+  it('offers nothing without a waist', () => {
+    expect(availableCircumferenceMethods({ ...FULL, waistCm: 0 })).toEqual([]);
+  });
+});
+
+describe('estimateBodyFat', () => {
+  const FULL = {
+    variant: 'male' as const,
+    waistCm: 86.4,
+    neckCm: 38.1,
+    heightCm: 178,
+    weightKg: 75,
+  };
+
+  it('dispatches to the named method', () => {
+    const navy = estimateBodyFat('navy', FULL);
+    const ymca = estimateBodyFat('ymca', FULL);
+
+    if (!navy.ok || !ymca.ok) throw new Error('expected results');
+    // Two equations reading different measurements land in different places.
+    expect(navy.standardError).toBe(NAVY_STANDARD_ERROR);
+    expect(ymca.standardError).toBe(YMCA_STANDARD_ERROR);
+  });
+
+  it('gives both methods the same result shape', () => {
+    const navy = estimateBodyFat('navy', FULL);
+    const ymca = estimateBodyFat('ymca', FULL);
+
+    expect(Object.keys(navy).sort()).toEqual(Object.keys(ymca).sort());
+  });
+
+  it('fails cleanly when the named method lacks its inputs', () => {
+    const { weightKg: _w, ...noWeight } = FULL;
+    const result = estimateBodyFat('ymca', noWeight);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toContain('weight');
   });
 });
