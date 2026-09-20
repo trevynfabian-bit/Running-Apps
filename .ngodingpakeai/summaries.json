@@ -54,7 +54,7 @@
     "summary": "Bootstrap server API: memuat env(), menjalankan runMigrations, membuat app Hono lewat createApp, serve di API_PORT dengan @hono/node-server, dan menjalankan worker in-process yang memanggil processQueuedJobs tiap 15 detik untuk menguras antrean sync_jobs. Menangani SIGINT dan SIGTERM untuk shutdown rapi dan mencatat kegagalan start lewat logger."
   },
   "apps/api/src/app.ts": {
-    "summary": "Perakitan aplikasi Hono @running/api, dipisah dari bootstrap server agar test bisa memanggil seluruh stack routing lewat app.request. Memasang CORS, logging permintaan tanpa body, endpoint /health, satu batas autentikasi dengan allowlist PUBLIC_PATHS, lalu me-mount route auth, composition, connections, webhooks, dan app. Error boundary mengubah ApiError dan ZodError menjadi envelope error yang stabil dan menyembunyikan detail internal pada 500."
+    "summary": "Perakitan aplikasi Hono untuk @running/api, dipisah dari bootstrap server agar tes bisa memanggil app.request tanpa membuka port. Memasang CORS, logging permintaan tanpa body (berisi data kesehatan), GET /health, satu batas autentikasi terpusat untuk /api/*, lalu me-mount authRoutes, compositionRoutes, connectionRoutes, webhookRoutes, dan appRoutes. PUBLIC_PATHS adalah allowlist eksplisit yang kini menyebut /api/auth/signup dan /api/auth/signin satu per satu — signout harus tahu akun siapa yang diakhiri — plus /api/webhooks/ dan callback OAuth yang memang tidak bisa membawa bearer token. Error boundary memetakan ApiError dan ZodError ke kode stabil dan kalimat untuk manusia; stack trace tetap di log."
   },
   "apps/api/src/env.ts": {
     "summary": "Konfigurasi environment @running/api yang divalidasi sekali saat boot dengan Zod sehingga deployment salah konfigurasi gagal cepat. Mengekspor loadEnv, env, dan setEnvForTesting; mencakup port dan URL publik, DATABASE_URL atau PGLITE_DIR, kunci autentikasi dan enkripsi, kredensial Strava dan WHOOP, konfigurasi AI, serta PHOTO_STORAGE_DIR dan PHOTO_MAX_BYTES untuk penyimpanan foto komposisi. Produksi ditolak bila rahasia pelindung data atlet belum diisi."
@@ -69,42 +69,36 @@
     "summary": "Runner migrasi: runMigrations membuka handle DB lalu memanggil migrator drizzle sesuai driver (pglite atau postgres-js) dengan folder migrasi apps/api/drizzle (MIGRATIONS_FOLDER). Migrasi yang sudah diterapkan dicatat di tabel __drizzle_migrations sehingga aman diulang. Bisa dijalankan langsung sebagai script pnpm db:migrate."
   },
   "apps/api/src/db/schema.ts": {
-    "summary": "Skema database PostgreSQL via Drizzle untuk @running/api. Mendefinisikan tabel identitas (users, athlete_profiles, body_measurements provider), koneksi provider, data mentah Strava/WHOOP/HealthKit, canonical_workouts, rencana latihan, state harian, coaching, sync, serta modul komposisi tubuh: body_composition_sessions, composition_photos, circumference_points, dan composition_measurements. Konvensi: timestamp UTC timestamptz, tanggal lokal sebagai date, dan unik (koneksi, id eksternal) untuk idempotensi.",
-    "sections": [
-      {
-        "symbol": "bodyCompositionSessions",
-        "startLine": 713,
-        "endLine": 760,
-        "summary": "Tabel body_composition_sessions: satu momen dokumentasi milik athlete_profiles dengan captured_at instan dan local_date kalender atlet; sengaja tidak unik per hari agar pemotretan ulang di hari yang sama tetap dua sesi."
-      },
-      {
-        "symbol": "compositionPhotos",
-        "startLine": 762,
-        "endLine": 805,
-        "summary": "Tabel composition_photos: satu foto per sisi per sesi, unik pada (session_id, side) sehingga mengulang satu sisi berarti mengganti; menyimpan storage_key buatan server yang juga unik, dan cascade dari sesi."
-      },
-      {
-        "symbol": "circumferencePoints",
-        "startLine": 807,
-        "endLine": 840,
-        "summary": "Tabel circumference_points: data referensi titik ukur (code unik, label, guide_text, sort_order, is_active) yang di-seed lewat migrasi dan sama untuk semua atlet."
-      },
-      {
-        "symbol": "compositionMeasurements",
-        "startLine": 842,
-        "endLine": 890,
-        "summary": "Tabel composition_measurements: satu lingkar per sesi dengan value_cm kanonis dan recorded_unit; unik pada (session_id, point_id) sehingga pengukuran ulang mengganti, dan referensi ke titik ukur bersifat restrict agar riwayat tidak ikut terhapus."
-      }
-    ]
+    "summary": "Skema database PostgreSQL via Drizzle untuk @running/api. Semua timestamp timestamptz UTC; tabel bersumber penyedia punya unique constraint (connection, external id) sehingga idempotensi dijaga database, bukan kode. Berisi identitas (users dengan kolom tokens_valid_from untuk pencabutan token, athlete_profiles), data penyedia (strava, whoop, healthkit), workout kanonis, perencanaan, coaching, serta komposisi tubuh: body_composition_sessions, composition_photos, circumference_points, composition_measurements, dan body_fat_estimates. Tabel komposisi sengaja bernama composition_measurements karena body_measurements sudah dipakai data penyedia. Rantai cascade dari athlete_profiles ke seluruh tabel komposisi adalah keseluruhan cerita privasi baris; circumference_points direferensikan dengan ON DELETE RESTRICT karena merupakan data referensi."
   },
   "apps/api/src/observability/logger.ts": {
     "summary": "Logger terstruktur JSON dengan redaksi wajib: fungsi redact menyamarkan nilai untuk key yang cocok pola token, secret, password, authorization, api key, refresh, bearer, signature, cookie di semua level nesting dan aman terhadap referensi siklik. Level dari LOG_LEVEL (default info, error saat NODE_ENV test). Mengekspor logger.debug, info, warn, error dengan signature (event, context)."
   },
   "apps/api/src/security/auth.ts": {
-    "summary": "JWT HS256 buatan sendiri agar kode keamanan bisa diaudit dalam satu layar: issueToken membuat token berumur 30 hari berisi sub (user id), athleteId, email, iat, exp; verifyToken memverifikasi signature secara constant-time, menolak alg selain HS256, token kedaluwarsa, atau payload tanpa sub dan athleteId. requireAuth adalah middleware Hono yang membaca header Bearer, melempar ApiError 401 bila tidak valid, dan mengisi variabel konteks userId, athleteId, email (tipe AuthVariables). Signing key dari AUTH_JWT_SECRET dengan fallback khusus development."
+    "summary": "JWT HS256 buatan sendiri agar kode keamanan bisa diaudit dalam satu layar. issueToken mencetak token 30 hari berisi sub (user id), athleteId, email, iat, exp, dan iatMs; verifyToken memeriksa signature secara constant-time serta menolak alg selain HS256, token kedaluwarsa, dan payload tanpa sub atau athleteId. requireAuth membaca header Bearer lalu menanyakan dua hal ke database sebelum meneruskan: apakah akun sudah menggeser users.tokens_valid_from melewati penerbitan token ini, dan apakah athlete_profiles yang disebut token masih ada serta masih milik user yang sama. Token yang dicabut, kedaluwarsa, atau yatim sama-sama mendapat 401 dengan pesan identik.",
+    "sections": [
+      {
+        "symbol": "issuedAtMs",
+        "startLine": 125,
+        "endLine": 127,
+        "summary": "Mengembalikan instan penerbitan token dalam milidetik dari klaim iatMs, dengan fallback iat * 1000 untuk token lama yang dicetak sebelum klaim itu ada."
+      },
+      {
+        "symbol": "tokenStillHonoured",
+        "startLine": 146,
+        "endLine": 161,
+        "summary": "Satu lookup terindeks yang menggabungkan athlete_profiles dan users; menolak token bila profil hilang, pemiliknya berbeda dari sub, atau penerbitan token lebih awal dari tokens_valid_from."
+      },
+      {
+        "symbol": "requireAuth",
+        "startLine": 163,
+        "endLine": 187,
+        "summary": "Middleware Hono yang mengisi variabel konteks userId, athleteId, dan email (AuthVariables) setelah token lolos verifikasi kriptografis dan pemeriksaan pencabutan."
+      }
+    ]
   },
   "apps/api/src/security/crypto.ts": {
-    "summary": "Kriptografi server: encryptSecret dan decryptSecret AES-256-GCM (format iv:tag:ciphertext base64url) untuk token OAuth provider at rest dengan kunci dari TOKEN_ENCRYPTION_KEY (fallback scrypt untuk development); hashPassword dan verifyPassword scrypt N=2^15 dengan salt acak dan perbandingan constant-time; verifyHmacSignature HMAC-SHA256 constant-time untuk webhook WHOOP; generateOAuthState nonce acak 32 byte."
+    "summary": "Primitif kriptografi untuk @running/api. hashPassword dan verifyPassword memakai scrypt dengan salt per-password. encryptToken dan decryptToken menjaga token OAuth penyedia sebelum menyentuh database. encryptBytes dan decryptBytes menambahkan enkripsi at-rest AES-256-GCM untuk foto komposisi dengan tata letak mentah iv || authTag || ciphertext — bukan base64, karena foto 12MB akan membengkak sepertiga. Kunci berkas diturunkan scryptSync memakai salt tersendiri sehingga kunci foto dan kunci token berbeda walau berasal dari TOKEN_ENCRYPTION_KEY yang sama; decryptBytes mengembalikan undefined untuk berkas yang dirusak atau terpotong."
   },
   "apps/api/src/providers/types.ts": {
     "summary": "Abstraksi provider data kebugaran agar sync engine tidak pernah bercabang per layanan: tipe ConnectionStatus, OAuthTokens, SyncWindow (since, until, cursor), NormalizedBodyMeasurement, NormalizedRecovery, NormalizedSleep, ProviderSyncPayload (workouts, recoveries, sleep, bodyMeasurements, nextCursor, warnings) dengan emptyPayload, ProviderCapabilities (serverPull, webhooks, workouts, recovery, sleep, bodyMeasurements, routes), interface FitnessDataProvider (id, displayName, capabilities, scopes, dataDescription, isConfigured, buildAuthorizationUrl, exchangeCode, refreshTokens, revoke, sync), serta kelas error ProviderAuthError dan ProviderRateLimitError."
@@ -137,66 +131,10 @@
     "summary": "HealthKitProvider untuk Apple Health yang tidak memiliki API server: capabilities serverPull false; HEALTHKIT_READ_TYPES mendaftar identifier HealthKit yang diminta dan HEALTHKIT_DATA_DESCRIPTION untuk UI izin; metode OAuth melempar HealthKitPullUnsupportedError; revoke no-op karena izin dicabut pengguna di iOS; sync mengembalikan payload kosong dengan warning agar penjadwalan sync untuk semua provider tidak error. Data sebenarnya masuk lewat POST /api/connections/healthkit/ingest dari aplikasi iOS."
   },
   "apps/api/src/routes/app.ts": {
-    "summary": "Router utama terautentikasi appRoutes (dimount di /api). Profil: GET /me, PATCH /me (updateAthleteProfileSchema), POST /me/complete-onboarding. GET /dashboard memuat loadAthleteContext, menghitung computeTodayDecision, meng-upsert recovery_states dan coach_decisions, lalu mengembalikan greeting, readiness, todayWorkout (versi yang disesuaikan bila ada), decision, trainingState, weeklyProgress, currentBlock, raceGoal (analyzeRaceGoal), zones, needsCheckIn. POST /check-in meng-upsert check_ins dan mengembalikan readiness serta decision baru; GET /recovery. GET /training-plan mengelompokkan planned_workouts per minggu; POST /training-plan/generate memanggil generateTrainingPlan, mengabaikan plan aktif lama, menyimpan training_plans, training_blocks, planned_workouts. GET /workouts dengan sourceRecords, GET /workouts/:id dengan analisis pasca-lari (computeDecoupling atau decouplingFromSplits, efficiencyFactor, adherence, insight), POST /workouts untuk sesi manual lalu recomputeTrainingLoads. GET /progress menyusun seri mingguan jarak, beban, longest run, HRV, RHR, tidur, berat, tren lewat computeTrend, dan prediksi lomba 5K, 10K, half, marathon. GET dan POST /race-goals (dengan computeRaceReadiness), POST /race-results. GET /reviews/weekly lewat buildWeeklyReview. Coach: GET /coach/context, POST /coach/message (answerCoachQuestion lalu simpan coach_conversations), GET /coach/history.",
-    "sections": [
-      {
-        "symbol": "GET /me, PATCH /me, POST /me/complete-onboarding",
-        "startLine": 76,
-        "endLine": 159,
-        "summary": "Membaca dan memperbarui athlete_profiles (preferensi, marker, availability, constraints) serta menandai onboarding selesai."
-      },
-      {
-        "symbol": "GET /dashboard",
-        "startLine": 165,
-        "endLine": 357,
-        "summary": "Menyusun dashboard harian dari AthleteContext, menyimpan recovery_states dan coach_decisions hari ini; helper greetingFor dan toPlannedDto."
-      },
-      {
-        "symbol": "POST /check-in, GET /recovery",
-        "startLine": 363,
-        "endLine": 444,
-        "summary": "Upsert check-in pagi (energy, soreness, stress, motivation, hasPain) yang langsung menghitung ulang readiness dan keputusan, plus detail recovery beserta riwayat dan tidur."
-      },
-      {
-        "symbol": "GET /training-plan, POST /training-plan/generate",
-        "startLine": 450,
-        "endLine": 644,
-        "summary": "Menampilkan plan aktif per minggu dengan target dan jarak selesai, dan menghasilkan plan baru dari template, race goal, volume terkini, dan fitness."
-      },
-      {
-        "symbol": "GET /workouts, GET /workouts/:id, POST /workouts",
-        "startLine": 650,
-        "endLine": 872,
-        "summary": "Daftar workout kanonis dengan provenance, detail beserta analisis decoupling, efficiency factor, training load dan insight, serta pencatatan workout manual."
-      },
-      {
-        "symbol": "GET /progress",
-        "startLine": 878,
-        "endLine": 1064,
-        "summary": "Seri tren latihan, recovery, dan tubuh dalam window hari tertentu plus prediksi lomba standar dengan confidence."
-      },
-      {
-        "symbol": "GET /race-goals, POST /race-goals, POST /race-results",
-        "startLine": 1070,
-        "endLine": 1183,
-        "summary": "Analisis dan readiness setiap race goal, pembuatan race goal, dan pencatatan hasil lomba sebagai jangkar fitness."
-      },
-      {
-        "symbol": "GET /reviews/weekly",
-        "startLine": 1189,
-        "endLine": 1269,
-        "summary": "Review mingguan deterministik dari sesi selesai vs terjadwal, recovery, tidur, efisiensi, dan distribusi intensitas."
-      },
-      {
-        "symbol": "GET /coach/context, POST /coach/message, GET /coach/history",
-        "startLine": 1275,
-        "endLine": 1332,
-        "summary": "Konteks coach terkurasi, tanya jawab dengan riwayat enam pesan terakhir, dan riwayat percakapan."
-      }
-    ]
+    "summary": "Route aplikasi terautentikasi untuk @running/api (dimount di /api): profil, dashboard, rencana latihan, workout, progres, recovery, target lomba, review mingguan, dan coach. GET dan PATCH /me mengelola athlete_profiles; POST /me/complete-onboarding menandai onboarding selesai. DELETE /me menghapus akun: berkas foto atlet dihapus lebih dulu lewat photoStorage().removeAthlete, baru baris users yang membawa seluruh tabel turunannya lewat ON DELETE CASCADE — database hanya menyimpan nama berkas, jadi menghapus baris lebih dulu akan meninggalkan gambar yang tak bisa dikenali lagi pemiliknya. Password diminta di atas bearer token dengan konfirmasi ketik DELETE, dan entri audit_logs mencatat hitungan tanpa nilai tubuh maupun storage key."
   },
   "apps/api/src/routes/auth.ts": {
-    "summary": "Router autentikasi authRoutes (dimount di /api/auth). POST /signup memvalidasi signUpSchema, menolak email yang sudah terdaftar dengan pesan generik 409 agar tidak membocorkan keberadaan akun, membuat baris users (hash scrypt) dan athlete_profiles dengan availability, constraints, dan notifications default, menulis audit_logs, lalu mengembalikan JWT. POST /signin memverifikasi password dengan dummy hash saat user tidak ada agar waktu respons konstan, dan mengembalikan token beserta hasCompletedOnboarding."
+    "summary": "Router autentikasi authRoutes (dimount di /api/auth). POST /signup memvalidasi signUpSchema, menolak email terdaftar dengan 409 generik agar keberadaan akun tidak bocor, membuat baris users (hash scrypt) beserta athlete_profiles dengan availability, constraints, dan notifications default, menulis audit_logs, lalu mengembalikan JWT. POST /signin memverifikasi password terhadap dummy hash saat user tidak ada agar waktu respons konstan. POST /signout berada di dalam batas autentikasi dan menggeser users.tokens_valid_from ke sekarang sehingga seluruh token akun berhenti diterima — bukan hanya token yang dipakai — tanpa menghapus data apa pun."
   },
   "apps/api/src/routes/connections.ts": {
     "summary": "Router koneksi provider connectionRoutes (dimount di /api/connections). State OAuth ditandatangani HMAC lewat signState dan verifyState tanpa penyimpanan server. GET / mendaftar semua provider dengan status, scopes, dataDescription, capabilities, isConfigured, dan lastSync dari sync_jobs. POST /:provider/connect: HealthKit langsung berstatus connected (otorisasi di device), mock mode langsung menukar token dan menyimpannya terenkripsi, selain itu mengembalikan authorizationUrl. POST /:provider/sync memanggil syncProvider (full atau incremental). DELETE /:provider melakukan revoke best-effort, menghapus token, dan opsional deleteProviderData yang hanya menghapus canonical workout bila provider itu satu-satunya sumber. POST /healthkit/ingest menerima batch workouts dan samples dari iOS, meng-upsert healthkit_samples (idempoten pada UUID), membuat kandidat canonical_workouts, body_measurements untuk body_mass, lalu rebuildCanonicalWorkouts dan recomputeTrainingLoads. GET /:provider/callback (publik) memverifikasi state, menukar code, menyimpan koneksi, meng-enqueue full sync, dan merender halaman HTML sederhana. Helper upsertConnection, callbackPage, providerRecordCounts.",
@@ -459,48 +397,10 @@
     "summary": "Token desain bergaya instrumen performa: palette netral cool-shifted, warna status desaturasi (green, amber, red), dan satu accent biru; tipe Theme serta darkTheme dan lightTheme (background, surface, surfaceRaised, border, text, accent, positive, caution, negative, ramp warna zones); spacing skala 4pt, radius, typography (display, metricLarge, metricMedium, metricSmall, title, heading, body, bodyStrong, caption, overline), elevation kartu, dan durasi motion."
   },
   "apps/mobile/src/lib/api.ts": {
-    "summary": "Klien API offline-first untuk app mobile. resolveBaseUrl dari EXPO_PUBLIC_API_URL, expoConfig.extra.apiUrl, atau default localhost (10.0.2.2 untuk emulator Android); kelas ApiRequestError dan OfflineError; penyimpanan token di SecureStore (AsyncStorage di web) lewat saveToken, loadToken, clearToken; cache respons GET di AsyncStorage (readCache, writeCache, clearCache) sebagai fallback saat jaringan gagal; fungsi request generik dengan bearer token, timeout, dan pass-through pesan error API. Objek api memetakan endpoint: signUp, signIn, me, updateMe, completeOnboarding, dashboard, checkIn, recovery, plan, generatePlan, workouts, workout, logWorkout, progress, raceGoals, createRaceGoal, createRaceResult, weeklyReview, connections, connect, sync, disconnect, ingestHealthKit, coachMessage, coachHistory. Mendefinisikan tipe respons AthleteProfileResponse, PlannedWorkout, WorkoutStructure, WorkoutStep, DashboardResponse, CheckInResponse, RecoveryResponse, PlanResponse, WorkoutSummary, WorkoutDetail, TrendDto, ProgressResponse, RaceGoal, WeeklyReview, Connection, SyncResult, CoachResponse, CoachHistoryMessage.",
-    "sections": [
-      {
-        "symbol": "resolveBaseUrl, ApiRequestError, OfflineError",
-        "startLine": 30,
-        "endLine": 60,
-        "summary": "Resolusi base URL dan kelas error klien."
-      },
-      {
-        "symbol": "saveToken, loadToken, clearToken",
-        "startLine": 71,
-        "endLine": 97,
-        "summary": "Penyimpanan token auth di Keychain atau Keystore, fallback AsyncStorage di web."
-      },
-      {
-        "symbol": "readCache, writeCache, clearCache",
-        "startLine": 103,
-        "endLine": 133,
-        "summary": "Cache respons per key di AsyncStorage dan pembersihan saat sign-out."
-      },
-      {
-        "symbol": "request",
-        "startLine": 139,
-        "endLine": 196,
-        "summary": "Wrapper fetch dengan header auth, timeout, envelope error API, dan fallback cache pada kegagalan jaringan."
-      },
-      {
-        "symbol": "api",
-        "startLine": 202,
-        "endLine": 314,
-        "summary": "Peta endpoint bertipe ke route /api backend dengan cacheKey dan timeout khusus."
-      },
-      {
-        "symbol": "response shapes",
-        "startLine": 320,
-        "endLine": 615,
-        "summary": "Interface TypeScript untuk seluruh respons API yang dipakai layar."
-      }
-    ]
+    "summary": "Klien API apps/mobile tanpa dependensi query library: request<T> menambahkan bearer token dari keychain, menangani cache offline lewat cacheKey, dan memetakan error ke ApiResult. Objek api mengumpulkan seluruh endpoint yang dipakai aplikasi — signUp, signIn, signOut (POST /api/auth/signout, dikirim sebelum token lokal dibersihkan), me, dashboard, checkIn, recovery, plan, workouts, progress, race goals, weekly review, connections, dan coach."
   },
   "apps/mobile/src/lib/session.tsx": {
-    "summary": "State sesi autentikasi dan hook pengambilan data untuk apps/mobile. Mengekspor SessionProvider, useSession, dan useQuery. Menangani signIn, signUp, dan signOut; saat sign-out token, cache respons API, dan preferensi satuan ukur dibersihkan bersama-sama agar data kesehatan serta setelan tidak bertahan di perangkat bersama. useQuery menyediakan status loading, error, dan penanda data basi dari cache."
+    "summary": "State sesi autentikasi dan hook pengambilan data untuk apps/mobile. Mengekspor SessionProvider, useSession, dan useQuery. signOut kini memanggil signOutSequence dari sign-out-cleanup: server diberi tahu lebih dulu selagi token masih ada untuk mengautentikasi permintaan, baru token, cache respons API, preferensi satuan ukur, dan seluruh pembersihan terdaftar dilupakan. useQuery menyediakan status loading, error, dan penanda data basi dari cache."
   },
   "modules/health-kit/package.json": {
     "summary": "Manifest @running/health-kit: bridge HealthKit native iOS dengan config plugin Expo; exports src/index.ts dan ./app.plugin.js; peerDependencies expo dan react-native; script typecheck dan test (passWithNoTests)."
@@ -586,15 +486,7 @@
     "summary": "Konfigurasi build packages/contracts: extends tsconfig.json dengan noEmit false agar menghasilkan output, exclude file test dan __fixtures__."
   },
   "packages/contracts/src/index.ts": {
-    "summary": "Paket @running/contracts: skema Zod dan tipe DTO sebagai sumber kebenaran tunggal format wire antara aplikasi mobile dan API. Mencakup primitif tanggal, profil atlet, workout, rencana latihan, recovery, coaching, koneksi provider, envelope error dengan API_ERROR_CODES, serta modul komposisi tubuh: photoSideSchema, createCompositionSessionSchema, compositionPhotoSchema, lengthUnitSchema, CIRCUMFERENCE_BOUNDS, circumferencePointSchema, recordMeasurementSchema, recordMeasurementsSchema, metricHistoryEntrySchema, dan compositionSessionSchema.",
-    "sections": [
-      {
-        "symbol": "body composition schemas",
-        "startLine": 754,
-        "endLine": 940,
-        "summary": "Kontrak modul komposisi tubuh: permintaan pencatatan membawa value dan unit yang diketik atlet (bukan nilai terkonversi) dengan batas kewajaran per satuan, satu titik ukur hanya boleh muncul sekali per payload, dan entri riwayat membedakan tanpa pembanding dari perubahan nol."
-      }
-    ]
+    "summary": "Paket @running/contracts: seluruh skema Zod dan tipe yang dibagi antara API dan aplikasi mobile, dengan zod sebagai satu-satunya dependensi. Mencakup profil atlet, workout, rencana latihan, check-in, recovery, race goal, review mingguan, coach, autentikasi (signUpSchema, signInSchema, authResponseSchema, deleteAccountSchema yang mewajibkan password plus konfirmasi literal 'DELETE'), kode error API, dan seluruh kontrak komposisi tubuh: sisi foto, sesi, pengukuran lingkar, estimasi body fat, riwayat, tren, dan perbandingan."
   },
   "packages/core/package.json": {
     "summary": "Manifest @running/core: domain model dan performance engine TypeScript murni tanpa dependensi runtime; exports src/index.ts; script typecheck, test (vitest), test:watch, dan build lewat tsconfig.build.json."
@@ -966,8 +858,8 @@
     "sections": [
       {
         "symbol": "MeasurementsScreen",
-        "startLine": 55,
-        "endLine": 360,
+        "startLine": 72,
+        "endLine": 359,
         "summary": "Komponen layar utama: menurunkan nilai dan satuan dari draft titik ukur aktif, memvalidasi lewat parseLength, menyimpan ke sesi aktif, lalu membersihkan draft titik tersebut agar entri berikutnya kembali ke satuan bawaan."
       }
     ]
@@ -1031,60 +923,28 @@
     "summary": "Komponen tampilan domain komposisi tubuh untuk apps/mobile. Mengekspor SessionSummaryCard, MetricHistoryCard dengan editor koreksi dan penghapusan, SegmentedChoice dan UnitToggle, BodyFatRange dengan RangeBand dan NonMedicalNotice, VariantPicker, QuantityField, RequirementList, FormulaSteps yang menampilkan setiap langkah perhitungan, ServiceStatusNotice yang selalu menawarkan jalur rumus, serta PhotoComparison yang memasangkan foto per sisi."
   },
   "apps/api/src/services/photo-storage.ts": {
-    "summary": "Layanan penyimpanan foto komposisi tubuh untuk @running/api dengan satu interface PhotoStorage dan driver filesystem. Mengekspor PHOTO_SIDES, validatePhotoUpload, photoStorage, dan resetPhotoStorageForTesting. Kunci penyimpanan selalu dibuat server dengan komponen acak, tipe konten diverifikasi lewat signature byte JPEG/PNG/WebP/HEIC (SVG ditolak), dan penghapusan tersedia per foto, per sesi, serta per atlet.",
-    "sections": [
-      {
-        "symbol": "sniff",
-        "startLine": 96,
-        "endLine": 130,
-        "summary": "Mengenali format sebenarnya dari byte awal berkas agar dokumen yang menyamar sebagai image tidak tersimpan dan kemudian disajikan sebagai gambar."
-      },
-      {
-        "symbol": "validatePhotoUpload",
-        "startLine": 150,
-        "endLine": 185,
-        "summary": "Memvalidasi ukuran terhadap PHOTO_MAX_BYTES serta kecocokan tipe yang dideklarasikan dengan byte aslinya; melempar ApiError 413 atau 415."
-      },
-      {
-        "symbol": "createFilesystemStorage",
-        "startLine": 205,
-        "endLine": 300,
-        "summary": "Driver filesystem: resolve kunci dengan pemeriksaan pola dan penguncian di dalam root, menulis berkas, membaca kembali, serta menghapus per berkas dan per prefix sesi/atlet."
-      }
-    ]
+    "summary": "Layanan penyimpanan foto komposisi berbasis filesystem untuk @running/api. Kunci dicetak server dengan pola composition/<athleteId>/<sessionId>/<side>-<16hex>.<ext>, jenis berkas ditentukan lewat magic byte (SVG ditolak), dan setiap kunci diverifikasi terhadap KEY_PATTERN serta akar direktori yang sudah di-resolve sehingga path traversal tidak mungkin. put menulis ciphertext AES-256-GCM dengan mode 0o600 sementara byteSize tetap mencatat panjang plaintext; read mengembalikan undefined dan menulis log bila berkas gagal didekripsi, sehingga berkas rusak menjadi 404 dan bukan sampah yang disajikan sebagai gambar. removeSession dan removeAthlete menghapus per prefix, sehingga berkas yatim ikut terbawa."
   },
   "apps/api/src/routes/composition.ts": {
-    "summary": "Route Hono modul komposisi tubuh di @running/api, dipasang pada /api/composition di dalam batas autentikasi. Menyediakan POST /sessions (unggah empat foto multipart), GET /sessions (daftar sesi milik atlet beserta foto dan pengukuran), POST /sessions/:sessionId/measurements, PATCH dan DELETE /sessions/:sessionId/measurements/:pointCode, serta GET /points/:code/history. Semua endpoint memeriksa kepemilikan sesi lebih dulu dan melaporkan sesi milik orang lain sebagai tidak ditemukan.",
+    "summary": "Route Hono modul komposisi tubuh di @running/api, dipasang pada /api/composition di dalam batas autentikasi. Menyediakan POST /sessions (unggah empat foto multipart), GET /sessions, DELETE /sessions/:sessionId, POST/PATCH/DELETE measurements, GET /points/:code/history, POST dan GET /sessions/:sessionId/body-fat, POST /sessions/:sessionId/body-fat/photo, GET /body-fat/history, GET /sessions/options, GET /sessions/:sessionId/photos/:photoId, GET /vision/status, GET /trend, GET /compare, dan GET /compare/photos. Semua endpoint memeriksa kepemilikan sesi lebih dulu lewat ownedSession dan melaporkan sesi milik orang lain sebagai 404, bukan 403.",
     "sections": [
       {
         "symbol": "POST /sessions",
-        "startLine": 120,
-        "endLine": 250,
-        "summary": "Menerima empat foto multipart, memvalidasi semuanya sebelum satu byte ditulis, menyimpan berkas lalu menulis baris sesi dan foto dalam satu transaksi, dan menghapus berkas bila transaksi gagal."
+        "startLine": 167,
+        "endLine": 288,
+        "summary": "Menerima empat foto multipart, memvalidasi seluruhnya sebelum satu byte ditulis, menyimpan berkas lalu menulis baris body_composition_sessions dan composition_photos dalam satu transaksi, dan membersihkan berkas bila transaksi gagal."
       },
       {
-        "symbol": "GET /sessions",
-        "startLine": 255,
-        "endLine": 330,
-        "summary": "Mengembalikan sesi milik atlet terbaru-dulu dengan foto berurut front/back/left/right dan pengukuran di-join ke circumference_points untuk membawa kode titik."
+        "symbol": "DELETE /sessions/:sessionId",
+        "startLine": 404,
+        "endLine": 476,
+        "summary": "Menghapus satu sesi beserta asetnya. Berkas dihapus lebih dulu lewat removeSession, baru baris sesi — urutan ini disengaja karena menghapus baris lebih dulu akan meninggalkan foto di disk yang tidak bisa ditemukan siapa pun lagi. Pengukuran dan estimasi ikut lewat ON DELETE CASCADE, dan jumlahnya dihitung sebelum penghapusan lalu dicatat ke audit_logs tanpa nilai tubuh."
       },
       {
-        "symbol": "POST /sessions/:sessionId/measurements",
-        "startLine": 360,
-        "endLine": 440,
-        "summary": "Mengubah nilai dan satuan yang diketik atlet menjadi sentimeter kanonis lewat @running/core lalu melakukan upsert pada (session_id, point_id); kode titik tak dikenal ditolak dengan namanya disebut."
-      },
-      {
-        "symbol": "GET /points/:code/history",
-        "startLine": 470,
-        "endLine": 545,
-        "summary": "Riwayat satu titik ukur terbaru-dulu dengan selisih antar sesi dari withChanges; mengambil satu baris ekstra di belakang halaman agar entri terlama pada halaman tetap memperoleh selisihnya."
-      },
-      {
-        "symbol": "PATCH and DELETE measurements",
-        "startLine": 560,
-        "endLine": 660,
-        "summary": "Koreksi nilai memakai skema yang sama dengan pencatatan dan tidak mengubah captured_at; penghapusan melaporkan apakah ada yang terhapus sehingga aman diulang, dan sesi tetap ada meski kehilangan lingkar terakhirnya."
+        "symbol": "GET /sessions/:sessionId/photos/:photoId",
+        "startLine": 1243,
+        "endLine": 1292,
+        "summary": "Menyajikan byte foto dengan Cache-Control private dan X-Content-Type-Options nosniff; foto sesi lain, termasuk milik atlet itu sendiri, tidak dapat dijangkau lewat jalur ini."
       }
     ]
   },
@@ -1143,8 +1003,8 @@
       },
       {
         "symbol": "aiAvailabilityMessage",
-        "startLine": 200,
-        "endLine": 265,
+        "startLine": 205,
+        "endLine": 245,
         "summary": "Menentukan pesan status jalur foto: sesi tanpa foto, layanan tak tersedia, atau gagal; setiap kondisi yang tidak bisa menghasilkan hasil selalu menawarkan jalur rumus."
       }
     ]
@@ -1204,5 +1064,73 @@
   },
   "apps/mobile/src/lib/composition-trends.test.ts": {
     "summary": "Uji Vitest untuk penyusun seri grafik tren di apps/mobile. Memastikan tiap metrik membawa satuannya sendiri karena tidak pernah berbagi sumbu, lingkar diurut dari terlama, estimasi lemak dikembalikan sebagai pita bukan garis, jendela waktu dipatuhi, metrik tanpa data mengembalikan undefined alih-alih sumbu kosong, sumbu tidak berjangkar ke nol, dan seri datar mendapat pita nominal alih-alih membagi nol."
+  },
+  "apps/api/drizzle/0003_body_fat_estimates.sql": {
+    "summary": "Migrasi Drizzle yang membuat tabel body_fat_estimates: satu baris per (session_id, method) dengan value_low, value_high, confidence_label, service_status, dan input yang dipakai. Unique index memastikan satu hasil rumus dan satu hasil foto per sesi; foreign key ke body_composition_sessions memakai ON DELETE CASCADE."
+  },
+  "apps/api/drizzle/0004_token_revocation.sql": {
+    "summary": "Migrasi Drizzle yang menambah kolom users.tokens_valid_from (timestamptz NOT NULL DEFAULT now()). Kolom ini menjadi titik pencabutan token: setiap JWT yang diterbitkan sebelum instan tersebut ditolak oleh requireAuth, sehingga POST /api/auth/signout benar-benar mengakhiri akses tanpa menunggu token kedaluwarsa 30 hari."
+  },
+  "apps/api/drizzle/meta/0001_snapshot.json": {
+    "summary": "Snapshot skema Drizzle untuk migrasi 0001 (composition_photos). Dipakai drizzle-kit untuk menghitung diff migrasi berikutnya dan diverifikasi oleh drizzle-kit check; bukan file yang diedit manusia."
+  },
+  "apps/api/drizzle/meta/0002_snapshot.json": {
+    "summary": "Snapshot skema Drizzle untuk migrasi 0002 (composition_measurements dan circumference_points). Dipakai drizzle-kit untuk menghitung diff migrasi berikutnya; bukan file yang diedit manusia."
+  },
+  "apps/api/drizzle/meta/0003_snapshot.json": {
+    "summary": "Snapshot skema Drizzle untuk migrasi 0003 (body_fat_estimates). Dipakai drizzle-kit untuk menghitung diff migrasi berikutnya dan diverifikasi drizzle-kit check yang sudah dirangkai ke skrip typecheck apps/api."
+  },
+  "apps/api/drizzle/meta/0004_snapshot.json": {
+    "summary": "Snapshot skema Drizzle untuk migrasi 0004 (users.tokens_valid_from). Dipakai drizzle-kit untuk menghitung diff migrasi berikutnya; bukan file yang diedit manusia."
+  },
+  "apps/api/src/services/vision.ts": {
+    "summary": "Layanan pembacaan foto (AI vision) untuk estimasi body fat, sengaja opsional: instance tanpa kredensial tetap berfungsi dengan rumus lingkar saja. Mengekspor visionStatus() yang membedakan tiga keadaan — active, unavailable (tidak dikonfigurasi, retry percuma), dan failed (dikonfigurasi tapi percobaan terakhir gagal, layak diulang) — plus recordVisionFailure, recordVisionSuccess, isVisionConfigured, dan analysePhotos yang mengirim hanya gambar ke layanan eksternal tanpa nama, id atlet, atau pengukuran. PHOTO_MARGIN = 4.5 menjaga hasil foto tidak pernah tampil lebih presisi daripada pita ukur.",
+    "sections": [
+      {
+        "symbol": "visionStatus",
+        "startLine": 76,
+        "endLine": 121,
+        "summary": "Menyusun laporan status yang aman ditampilkan ke atlet: tidak pernah menyebut kunci, host, atau nama penyedia, dan memisahkan 'belum dikonfigurasi' dari 'sedang gagal' agar saran yang diberikan benar."
+      },
+      {
+        "symbol": "analysePhotos",
+        "startLine": 171,
+        "endLine": 323,
+        "summary": "Mengirim gambar ke layanan pembacaan dan mengembalikan PhotoReading berupa union hasil atau kegagalan bernama, bukan exception, sehingga route bisa menjelaskan kenapa estimasi tidak ada."
+      }
+    ]
+  },
+  "apps/api/src/services/vision.test.ts": {
+    "summary": "Tes Vitest untuk services/vision.ts. Memastikan visionStatus membedakan unavailable dari failed, bahwa jendela kegagalan FAILURE_WINDOW_MS memulihkan status ke active, bahwa kalimat untuk atlet tidak pernah memuat kunci atau nama penyedia, dan bahwa analysePhotos mengembalikan kegagalan sebagai nilai."
+  },
+  "apps/api/src/security/auth.test.ts": {
+    "summary": "Tes Vitest pencabutan token yang menjalankan stack Hono nyata di atas PGlite. Membuktikan POST /api/auth/signout menutup akses /api/composition/sessions untuk token yang masih bertanda tangan sah dan belum kedaluwarsa, mencabut seluruh token akun (bukan hanya yang dipakai), tidak menyentuh atlet lain, dan tidak menghapus data. Juga menguji requireAuth menolak token yang profil atletnya sudah dihapus atau milik user lain, serta kasus regresi iatMs: token yang dicetak pada detik yang sama dengan pencabutan tetap diterima."
+  },
+  "apps/api/src/routes/account-deletion.test.ts": {
+    "summary": "Tes Vitest untuk DELETE /api/me di atas PGlite dan penyimpanan foto nyata. Menguji password salah dan konfirmasi 'DELETE' yang hilang tidak mengubah apa pun, seluruh tabel milik atlet kosong lewat cascade, berkas foto benar-benar hilang dari disk, token menjadi tak berguna, data atlet lain utuh, entri audit_logs berisi hitungan tanpa nilai tubuh, dan — dengan removeAthlete distub gagal — akun tetap utuh sehingga percobaan ulang berhasil."
+  },
+  "apps/mobile/app/composition/history.tsx": {
+    "summary": "Layar riwayat komposisi dari sisi privasi (route /composition/history di Expo Router). Dibuka saat pertanyaan atlet adalah 'apa yang kalian simpan dan bagaimana menghapusnya', jadi diawali inventaris berisi hitungan yang bisa dicek, bukan kalimat penenang. Setiap baris menyebut isi sesi dan apakah ada yang meninggalkan perangkat, memakai describeContents dan describeDeletion dari composition-inventory. Data masih stub."
+  },
+  "apps/mobile/app/composition/privacy.tsx": {
+    "summary": "Layar privasi komposisi (route /composition/privacy di Expo Router). Disusun per lokasi penyimpanan — DEVICE_FACTS dan SERVER_FACTS dari privacy-facts — bukan per judul kebijakan, karena pertanyaan atlet adalah 'apa yang ada di ponsel saya dan apa yang ada di server kalian'. Menampilkan total inventaris lewat inventory dan inventoryTotals agar angkanya bisa diverifikasi."
+  },
+  "apps/mobile/src/lib/privacy-facts.ts": {
+    "summary": "Sumber pernyataan privasi komposisi untuk apps/mobile. Mengekspor PrivacyFact, STORAGE_FACTS, turunan DEVICE_FACTS dan SERVER_FACTS, serta EMPTY_PHRASES. Setiap fakta wajib menyebut mekanisme yang bisa dicek terhadap kode (kunci penyimpanan dicetak server, cascade saat hapus sesi, pencabutan token saat sign-out, enkripsi foto di disk) dan bukan sentimen; EMPTY_PHRASES adalah daftar frasa pemasaran yang dilarang muncul."
+  },
+  "apps/mobile/src/lib/privacy-facts.test.ts": {
+    "summary": "Tes Vitest untuk privacy-facts.ts. Menegaskan setiap lokasi penyimpanan punya fakta, tidak ada frasa dari EMPTY_PHRASES yang lolos ke salinan teks, dan fakta penghapusan akun menyebut mekanismenya — berkas gambar dihapus lebih dulu, lalu baris akun, dan password diminta di atas token — bukan sekadar janji."
+  },
+  "apps/mobile/src/lib/sign-out-cleanup.ts": {
+    "summary": "Registry pembersihan saat sign-out untuk apps/mobile, plus urutan sign-out itu sendiri. registerSignOutCleanup memungkinkan provider di bawah SessionProvider mendaftarkan apa yang harus dilupakan tanpa menata ulang pohon komponen; runSignOutCleanups menjalankan semuanya dengan Promise.allSettled agar satu kegagalan tidak membatalkan sisanya. signOutSequence menjalankan revoke ke server lebih dulu — selagi token masih ada untuk mengautentikasi — baru melupakan token, cache, dan preferensi satuan; modul ini sengaja bebas impor React Native agar aturan urutannya bisa diuji."
+  },
+  "apps/mobile/src/lib/sign-out-cleanup.test.ts": {
+    "summary": "Tes Vitest untuk sign-out-cleanup.ts. Menguji registry menjalankan semua pembersihan, menahan cleanup yang melempar secara sinkron maupun asinkron, dan melaporkan jumlah kegagalan. Untuk signOutSequence: revoke selalu terjadi sebelum forget, sign-out di perangkat tetap tuntas ketika server tak terjangkau, dan satu langkah forget yang gagal tidak menghentikan langkah lain."
+  },
+  "apps/mobile/src/lib/composition-inventory.ts": {
+    "summary": "Menerjemahkan sesi komposisi menjadi inventaris yang bisa dibaca atlet di layar riwayat dan privasi. Mengekspor inventorySession, inventory, inventoryTotals, describeContents, describeDeletion, dan describeDeleted, plus tipe StorageLocation dan SessionInventory. Menghitung jumlah foto dan pengukuran serta menandai apakah isi sesi meninggalkan perangkat — sesi berfoto berarti ada yang berada di server, karena layanan pembacaan berjalan di sana."
+  },
+  "apps/mobile/src/lib/composition-inventory.test.ts": {
+    "summary": "Tes Vitest untuk composition-inventory.ts. Menguji hitungan foto dan pengukuran, penandaan sesi kosong, lokasi penyimpanan device versus server, serta kalimat describeContents, describeDeletion, dan describeDeleted termasuk kesesuaian bentuk tunggal dan jamak."
   }
 }
