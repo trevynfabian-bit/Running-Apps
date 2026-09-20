@@ -1018,6 +1018,31 @@ export const bodyFatEstimateSchema = z.object({
 export type BodyFatEstimateDto = z.infer<typeof bodyFatEstimateSchema>;
 
 /**
+ * One session's estimate, as it appears in a history.
+ *
+ * Carries the session's own date rather than when the estimate was computed: a
+ * formula re-run in September on June's measurements describes June, and
+ * plotting it at the September end of a chart would misplace it entirely.
+ */
+export const bodyFatHistoryEntrySchema = z.object({
+  sessionId: z.string(),
+  capturedAt: isoDateTime,
+  localDate: localDate,
+  method: bodyFatMethodSchema,
+  valueLow: z.number(),
+  valueHigh: z.number(),
+  confidence: confidenceLabelSchema,
+});
+export type BodyFatHistoryEntryDto = z.infer<typeof bodyFatHistoryEntrySchema>;
+
+export const bodyFatHistorySchema = z.object({
+  entries: z.array(bodyFatHistoryEntrySchema),
+  /** Methods present in the history, so a client can offer only real choices. */
+  methods: z.array(bodyFatMethodSchema),
+});
+export type BodyFatHistoryDto = z.infer<typeof bodyFatHistorySchema>;
+
+/**
  * Uniform error envelope. `code` is stable and machine-readable; `message` is
  * athlete-facing and must never contain a stack trace or provider internals.
  */

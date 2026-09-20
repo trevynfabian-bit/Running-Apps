@@ -23,6 +23,7 @@ import {
   recordMeasurementSchema,
   recordMeasurementsSchema,
   type BodyFatEstimateDto,
+  type BodyFatHistoryDto,
   type MetricHistoryDto,
   type CompositionMeasurementDto,
   type CompositionPhotoDto,
@@ -970,4 +971,70 @@ compositionRoutes.post('/sessions/:sessionId/body-fat/photo', async (c) => {
 
   logger.info('composition.photo_read', { sessionId, sides: photos.length });
   return c.json(toEstimateDto(row!), 201);
+});
+
+/**
+ * Body fat estimates across an athlete's sessions, newest first.
+ *
+ * Each entry is dated by its *session*, not by when the estimate was computed.
+ * A formula re-run in September on June's measurements describes June, and
+ * plotting it at the September end of a chart would misplace it entirely — the
+ * estimate is a property of the session, not of the moment it was calculated.
+ *
+ * `method` narrows to one equation. Without it every method comes back, which
+ * is right for a table and wrong for a line: two methods plotted as one series
+ * would read as a body that jumped several points and back.
+ */
+compositionRoutes.get('/body-fat/history', async (c) => {
+  const athleteId = c.get('athleteId');
+
+  const requested = Number(c.req.query('limit') ?? 24);
+  const limit = Number.isFinite(requested) ? Math.min(Math.max(Math.trunc(requested), 1), 200) : 24;
+
+  const method = c.req.query('method');
+  if (method !== undefined && !['navy', 'ymca', 'ai'].includes(method)) {
+    throw badRequest(`Unknown method: ${method}.`, { method });
+  }
+
+  const { db } = await getDb();
+
+  const rows = await db
+    .select({
+      sessionId: bodyCompositionSessions.id,
+      capturedAt: bodyCompositionSessions.capturedAt,
+      localDate: bodyCompositionSessions.localDate,
+      method: bodyFatEstimates.method,
+      valueLow: bodyFatEstimates.valueLow,
+      valueHigh: bodyFatEstimates.valueHigh,
+      confidenceLabel: bodyFatEstimates.confidenceLabel,
+    })
+    .from(bodyFatEstimates)
+    .innerJoin(bodyCompositionSessions, eq(bodyFatEstimates.sessionId, bodyCompositionSessions.id))
+    .where(
+      method === undefined
+        ? eq(bodyCompositionSessions.athleteId, athleteId)
+        : and(
+            eq(bodyCompositionSessions.athleteId, athleteId),
+            eq(bodyFatEstimates.method, method),
+          ),
+    )
+    .orderBy(desc(bodyCompositionSessions.capturedAt))
+    .limit(limit);
+
+  const body: BodyFatHistoryDto = {
+    entries: rows.map((row) => ({
+      sessionId: row.sessionId,
+      capturedAt: row.capturedAt.toISOString(),
+      localDate: row.localDate,
+      method: row.method as BodyFatHistoryDto['entries'][number]['method'],
+      valueLow: row.valueLow,
+      valueHigh: row.valueHigh,
+      confidence: row.confidenceLabel as BodyFatHistoryDto['entries'][number]['confidence'],
+    })),
+    // Only the methods actually present, so a client offers real choices
+    // rather than a filter that returns nothing.
+    methods: [...new Set(rows.map((row) => row.method))].sort() as BodyFatHistoryDto['methods'],
+  };
+
+  return c.json(body);
 });

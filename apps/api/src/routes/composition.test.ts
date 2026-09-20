@@ -1144,3 +1144,137 @@ describe('POST /api/composition/sessions/:id/body-fat/photo', () => {
     expect(response.status).toBe(401);
   });
 });
+
+describe('GET /api/composition/body-fat/history', () => {
+  let historyToken: string;
+  const created: { id: string; capturedAt: string }[] = [];
+
+  beforeAll(async () => {
+    const signUp = await app.request('/api/auth/signup', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: 'fat-history@example.test',
+        password: 'a-long-enough-password',
+        displayName: 'Fat History',
+      }),
+    });
+    historyToken = ((await signUp.json()) as { token: string }).token;
+
+    for (const capturedAt of [
+      '2026-06-14T07:30:00.000Z',
+      '2026-07-12T07:15:00.000Z',
+      '2026-09-06T07:45:00.000Z',
+    ]) {
+      const session = (await (
+        await app.request('/api/composition/sessions', {
+          method: 'POST',
+          headers: { authorization: `Bearer ${historyToken}` },
+          body: sessionForm({}, { capturedAt }),
+        })
+      ).json()) as { id: string };
+      created.push({ id: session.id, capturedAt });
+
+      await app.request(`/api/composition/sessions/${session.id}/measurements`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${historyToken}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          measurements: [
+            { pointCode: 'waist', value: 86.4 },
+            { pointCode: 'neck', value: 38.1 },
+          ],
+        }),
+      });
+
+      await app.request(`/api/composition/sessions/${session.id}/body-fat`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${historyToken}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          method: 'navy',
+          variant: 'male',
+          height: { value: 178, unit: 'cm' },
+        }),
+      });
+    }
+
+    // One session also gets the other equation, so the method filter has
+    // something to narrow.
+    await app.request(`/api/composition/sessions/${created[0]!.id}/body-fat`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${historyToken}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        method: 'ymca',
+        variant: 'male',
+        weight: { value: 75, unit: 'kg' },
+      }),
+    });
+  }, 60_000);
+
+  async function history(query = '', auth = historyToken): Promise<Response> {
+    return app.request(`/api/composition/body-fat/history${query}`, {
+      headers: { authorization: `Bearer ${auth}` },
+    });
+  }
+
+  it('returns estimates newest first, dated by their session', async () => {
+    const body = (await (await history('?method=navy')).json()) as {
+      entries: { sessionId: string; capturedAt: string }[];
+    };
+
+    const times = body.entries.map((entry) => Date.parse(entry.capturedAt));
+    expect(times).toEqual([...times].sort((a, b) => b - a));
+
+    // The June estimate carries June's date even though it was computed now.
+    const june = body.entries.find((entry) => entry.sessionId === created[0]!.id);
+    expect(june?.capturedAt).toBe(created[0]!.capturedAt);
+  });
+
+  it('narrows to one equation so a line is one series', async () => {
+    const navy = (await (await history('?method=navy')).json()) as { entries: unknown[] };
+    const ymca = (await (await history('?method=ymca')).json()) as { entries: unknown[] };
+
+    // Two methods plotted as one series would read as a body that jumped
+    // several points and back.
+    expect(navy.entries).toHaveLength(3);
+    expect(ymca.entries).toHaveLength(1);
+  });
+
+  it('returns every method when none is named', async () => {
+    const body = (await (await history()).json()) as {
+      entries: unknown[];
+      methods: string[];
+    };
+
+    expect(body.entries).toHaveLength(4);
+    // Only the methods actually present, so a client offers real choices.
+    expect(body.methods.sort()).toEqual(['navy', 'ymca']);
+  });
+
+  it('rejects a method that does not exist', async () => {
+    expect((await history('?method=calipers')).status).toBe(400);
+  });
+
+  it('honours a limit and clamps a silly one', async () => {
+    const one = (await (await history('?limit=1')).json()) as { entries: unknown[] };
+    expect(one.entries).toHaveLength(1);
+
+    const zero = (await (await history('?limit=0')).json()) as { entries: unknown[] };
+    expect(zero.entries).toHaveLength(1);
+
+    const nonsense = (await (await history('?limit=banana')).json()) as { entries: unknown[] };
+    expect(nonsense.entries.length).toBeGreaterThan(0);
+  });
+
+  it('never shows one athlete the estimates of another', async () => {
+    const theirs = (await (await history('', token)).json()) as {
+      entries: { sessionId: string }[];
+    };
+
+    const mine = new Set(created.map((session) => session.id));
+    expect(theirs.entries.some((entry) => mine.has(entry.sessionId))).toBe(false);
+  });
+
+  it('requires a signed-in athlete', async () => {
+    expect((await app.request('/api/composition/body-fat/history')).status).toBe(401);
+  });
+});
