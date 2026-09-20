@@ -20,6 +20,12 @@
  *   "delete everything for this athlete" has to work without first enumerating
  *   rows that may already be gone.
  *
+ *   Bytes are encrypted at rest. The repository already encrypts provider
+ *   tokens before they touch the database; photographs of someone's body are at
+ *   least as sensitive, and leaving them readable to anything with filesystem
+ *   access — a backup, a misconfigured volume mount, a stray container — while
+ *   encrypting an OAuth token would be a strange place to draw the line.
+ *
  * One interface, two drivers — the same shape as the database client. The
  * filesystem driver backs development and tests; an object-store driver can be
  * added without any calling code changing.
@@ -29,6 +35,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { mkdir, readFile, readdir, rm, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
+import { decryptBytes, encryptBytes } from '../security/crypto.js';
 import { badRequest, photoTooLarge, unsupportedPhotoType } from '../errors.js';
 import { env } from '../env.js';
 import { logger } from '../observability/logger.js';
@@ -259,11 +266,16 @@ function createFilesystemStorage(rootDir: string): PhotoStorage {
 
       const full = resolve(storageKey);
       await mkdir(path.dirname(full), { recursive: true });
-      await writeFile(full, input.bytes);
+      // 0600: readable by the process that wrote it and nothing else on the
+      // host. Encryption is the real defence, but a file this sensitive should
+      // not also be world-readable.
+      await writeFile(full, encryptBytes(input.bytes), { mode: 0o600 });
 
       return {
         storageKey,
         contentType,
+        // The athlete's photo is what was measured, not the ciphertext that
+        // happens to be a few bytes longer.
         byteSize: input.bytes.byteLength,
         checksum: createHash('sha256').update(input.bytes).digest('hex'),
       };
@@ -272,7 +284,19 @@ function createFilesystemStorage(rootDir: string): PhotoStorage {
     async read(storageKey) {
       const full = resolve(storageKey);
       try {
-        return { bytes: await readFile(full), contentType: extensionOf(storageKey) };
+        const stored = await readFile(full);
+        const bytes = decryptBytes(stored);
+
+        if (!bytes) {
+          // Authenticated encryption failing means the file is truncated,
+          // tampered with, or written under a different key. Reporting it as
+          // absent is the honest answer — we will not serve bytes we cannot
+          // vouch for — and the log is where the real problem surfaces.
+          logger.error('photo-storage.unreadable', { storageKey });
+          return undefined;
+        }
+
+        return { bytes, contentType: extensionOf(storageKey) };
       } catch (error) {
         // A missing object is a 404 for the caller to shape, not a 500.
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;

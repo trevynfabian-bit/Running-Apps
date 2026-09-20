@@ -154,3 +154,66 @@ export function verifyHmacSignature(args: {
 export function generateOAuthState(): string {
   return randomBytes(32).toString('base64url');
 }
+
+// ---------------------------------------------------------------------------
+// Binary payloads
+// ---------------------------------------------------------------------------
+
+/**
+ * Key for data at rest on disk, derived separately from the token key.
+ *
+ * Domain separation on purpose: photographs of someone's body and provider
+ * OAuth tokens are different secrets with different blast radii, and an
+ * attacker who recovers one key should not thereby hold the other. The same
+ * configured material backs both — one secret to manage, not two — but the
+ * derived keys are independent.
+ */
+function fileEncryptionKey(): Buffer {
+  const configured = env().TOKEN_ENCRYPTION_KEY;
+  const material =
+    configured && configured.length >= 64 ? configured : 'running-os-development-key';
+
+  return scryptSync(material, 'running-os-file-storage-salt', 32);
+}
+
+/**
+ * Encrypt bytes for storage on disk.
+ *
+ * Layout is `iv || authTag || ciphertext`, raw — not base64. A 12 MB photo
+ * base64'd grows by a third and has to exist as a string in memory before it
+ * can be written, which is the opposite of what a file this size needs.
+ *
+ * GCM rather than CBC for the same reason the token code chose it: the
+ * ciphertext is authenticated, so a tampered or truncated file fails to
+ * decrypt instead of decrypting to something that looks like an image.
+ */
+export function encryptBytes(plaintext: Uint8Array): Buffer {
+  const iv = randomBytes(IV_LENGTH);
+  const cipher = createCipheriv(ALGORITHM, fileEncryptionKey(), iv);
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+
+  return Buffer.concat([iv, cipher.getAuthTag(), ciphertext]);
+}
+
+/**
+ * Decrypt bytes written by `encryptBytes`.
+ *
+ * Returns undefined for anything that does not authenticate — a truncated
+ * file, a wrong key, a tampered one. The caller treats that as a missing
+ * object rather than serving bytes it cannot vouch for.
+ */
+export function decryptBytes(payload: Buffer): Buffer | undefined {
+  if (payload.length < IV_LENGTH + AUTH_TAG_LENGTH) return undefined;
+
+  const iv = payload.subarray(0, IV_LENGTH);
+  const authTag = payload.subarray(IV_LENGTH, IV_LENGTH + AUTH_TAG_LENGTH);
+  const ciphertext = payload.subarray(IV_LENGTH + AUTH_TAG_LENGTH);
+
+  try {
+    const decipher = createDecipheriv(ALGORITHM, fileEncryptionKey(), iv);
+    decipher.setAuthTag(authTag);
+    return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+  } catch {
+    return undefined;
+  }
+}

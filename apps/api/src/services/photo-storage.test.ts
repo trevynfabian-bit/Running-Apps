@@ -8,7 +8,7 @@
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -303,5 +303,137 @@ describe('deletion', () => {
     await expect(
       photoStorage().removeAthlete('99999999-9999-9999-9999-999999999999'),
     ).resolves.toBe(0);
+  });
+});
+
+describe('encryption at rest', () => {
+  /** Walk the storage root and return every file path it holds. */
+  async function storedFiles(): Promise<string[]> {
+    const entries = await readdir(root, { withFileTypes: true, recursive: true });
+    return entries
+      .filter((entry) => entry.isFile())
+      .map((entry) => path.join(entry.parentPath ?? root, entry.name));
+  }
+
+  it('never writes the photo bytes to disk in the clear', async () => {
+    const plaintext = jpeg();
+    const stored = await photoStorage().put({
+      athleteId: ATHLETE,
+      sessionId: SESSION,
+      side: 'front',
+      contentType: 'image/jpeg',
+      bytes: plaintext,
+    });
+
+    const onDisk = await readFile(path.join(root, stored.storageKey));
+
+    // The JPEG magic number is the giveaway: if the file still starts FF D8 FF
+    // it was written in the clear.
+    expect(onDisk.subarray(0, 3)).not.toEqual(Buffer.from([0xff, 0xd8, 0xff]));
+    expect(onDisk.includes(Buffer.from(plaintext))).toBe(false);
+    // Nonce and auth tag ride along, so the file is longer than the photo.
+    expect(onDisk.byteLength).toBeGreaterThan(plaintext.byteLength);
+  });
+
+  it('round-trips the exact original bytes', async () => {
+    const plaintext = png();
+    const stored = await photoStorage().put({
+      athleteId: ATHLETE,
+      sessionId: SESSION,
+      side: 'back',
+      contentType: 'image/png',
+      bytes: plaintext,
+    });
+
+    const read = await photoStorage().read(stored.storageKey);
+    expect(Uint8Array.from(read!.bytes)).toEqual(plaintext);
+  });
+
+  it('records the size of the photo, not of the ciphertext', async () => {
+    const plaintext = jpeg();
+    const stored = await photoStorage().put({
+      athleteId: ATHLETE,
+      sessionId: SESSION,
+      side: 'left',
+      contentType: 'image/jpeg',
+      bytes: plaintext,
+    });
+
+    // What was measured is the athlete's photo, not the few extra bytes the
+    // nonce and tag happen to add.
+    expect(stored.byteSize).toBe(plaintext.byteLength);
+    const onDisk = await stat(path.join(root, stored.storageKey));
+    expect(onDisk.size).toBeGreaterThan(stored.byteSize);
+  });
+
+  it('refuses to serve a file that has been tampered with', async () => {
+    const stored = await photoStorage().put({
+      athleteId: ATHLETE,
+      sessionId: SESSION,
+      side: 'right',
+      contentType: 'image/jpeg',
+      bytes: jpeg(),
+    });
+
+    const full = path.join(root, stored.storageKey);
+    const onDisk = await readFile(full);
+    // Flip a bit in the ciphertext.
+    const last = onDisk.length - 1;
+    onDisk[last] = (onDisk[last] ?? 0) ^ 0xff;
+    await writeFile(full, onDisk);
+
+    // Authenticated encryption means a tampered file fails to decrypt rather
+    // than decrypting to something that looks like an image.
+    await expect(photoStorage().read(stored.storageKey)).resolves.toBeUndefined();
+  });
+
+  it('refuses to serve a truncated file', async () => {
+    const stored = await photoStorage().put({
+      athleteId: ATHLETE,
+      sessionId: SESSION,
+      side: 'front',
+      contentType: 'image/jpeg',
+      bytes: jpeg(),
+    });
+
+    const full = path.join(root, stored.storageKey);
+    await writeFile(full, (await readFile(full)).subarray(0, 8));
+
+    await expect(photoStorage().read(stored.storageKey)).resolves.toBeUndefined();
+  });
+
+  it('writes files only the owning process can read', async () => {
+    const stored = await photoStorage().put({
+      athleteId: ATHLETE,
+      sessionId: SESSION,
+      side: 'front',
+      contentType: 'image/jpeg',
+      bytes: jpeg(),
+    });
+
+    const mode = (await stat(path.join(root, stored.storageKey))).mode & 0o777;
+
+    // Encryption is the real defence, but a file this sensitive should not
+    // also be world-readable.
+    expect(mode & 0o077).toBe(0);
+  });
+
+  it('leaves nothing readable behind anywhere in the store', async () => {
+    await photoStorage().put({
+      athleteId: ATHLETE,
+      sessionId: SESSION,
+      side: 'front',
+      contentType: 'image/png',
+      bytes: png(),
+    });
+
+    for (const file of await storedFiles()) {
+      const contents = await readFile(file);
+      // No PNG signature anywhere on disk.
+      expect(
+        contents.includes(Buffer.from([0x89, 0x50, 0x4e, 0x47])),
+        `${file} looks like it holds a readable image`,
+      ).toBe(false);
+    }
   });
 });
