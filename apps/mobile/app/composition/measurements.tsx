@@ -6,6 +6,12 @@
  * and every subsequent entry opens in it — after a save, after leaving the
  * screen, after restarting the app.
  *
+ * Work in progress is held per measure point. Someone measuring their waist who
+ * jumps to the chest and back finds the waist number still there, and finds the
+ * chest field empty rather than pre-filled with the waist's. The unit travels
+ * with each draft, so a number typed in inches is never re-read as centimetres
+ * because another point was visited in between.
+ *
  * A per-entry override sits next to the input for the case where one number was
  * read off a differently marked tape. That override is deliberately scoped to
  * the entry being typed: saving resets the form to the stored default rather
@@ -36,6 +42,14 @@ import {
   type BodyMeasurement,
 } from '../../src/lib/body-composition';
 import { UNIT_OPTIONS, useMeasurementUnit } from '../../src/lib/measurement-units';
+import {
+  clearDraft,
+  readDraft,
+  startedPointIds,
+  writeDraft,
+  type DraftsByPoint,
+  type MeasurementDraft,
+} from '../../src/lib/measurement-draft';
 import { radius, spacing } from '../../src/design/tokens';
 import { useTheme } from '../../src/design/theme';
 import {
@@ -56,18 +70,19 @@ export default function MeasurementsScreen(): React.ReactElement {
   const { defaultUnit, ready, setDefaultUnit } = useMeasurementUnit();
 
   const [pointId, setPointId] = useState(STUB_CIRCUMFERENCE_POINTS[0]!.id);
-  const [value, setValue] = useState('');
+  const [drafts, setDrafts] = useState<DraftsByPoint>({});
   const [entries, setEntries] = useState<BodyMeasurement[]>([]);
   const [error, setError] = useState<string>();
 
   /**
-   * The unit this one entry is being typed in.
+   * What is in the form right now: this point's draft, not a shared buffer.
    *
-   * `undefined` means "whatever the default is" — the normal case, and the
-   * reason the default reaches the next entry without anything copying it
-   * across. Only an explicit override puts a value here, and saving clears it.
+   * A draft's `unit` is `undefined` in the normal case, meaning "whatever the
+   * default is". That is what lets a changed default reach every draft that
+   * never overrode it, without anything copying the value across.
    */
-  const [rawOverride, setOverride] = useState<LengthUnit>();
+  const draft = readDraft(drafts, pointId);
+  const value = draft.value;
 
   /**
    * An override that matches the default is not an override.
@@ -77,10 +92,38 @@ export default function MeasurementsScreen(): React.ReactElement {
    * anything. Collapsing it here keeps the copy honest — otherwise the form
    * would offer to make inches the default when inches already is.
    */
-  const override = rawOverride === defaultUnit ? undefined : rawOverride;
+  const override = draft.unit === defaultUnit ? undefined : draft.unit;
   const entryUnit = override ?? defaultUnit;
 
   const point = findPoint(pointId);
+
+  const patchDraft = (patch: Partial<MeasurementDraft>): void =>
+    setDrafts((current) => writeDraft(current, pointId, patch));
+
+  /**
+   * Switch points, carrying nothing across.
+   *
+   * The error is dropped rather than moved: it describes an attempt to save
+   * *this* point, and showing it over another point's empty field would be
+   * telling the athlete about a problem they are not looking at.
+   */
+  const selectPoint = (nextPointId: string): void => {
+    setPointId(nextPointId);
+    setError(undefined);
+  };
+
+  /**
+   * Other points the athlete has started but not saved.
+   *
+   * Listed in the picker's own order rather than the order they were typed, so
+   * the names read down the body the same way the chips above them do.
+   */
+  const inProgress = STUB_CIRCUMFERENCE_POINTS.filter(
+    (option) =>
+      option.id !== pointId &&
+      startedPointIds(drafts).includes(option.id) &&
+      readDraft(drafts, option.id).value.trim() !== '',
+  ).map((option) => option.label);
 
   // Waiting avoids a flash of `cm` in front of an athlete who chose inches.
   if (!ready) return <LoadingState label="Loading your measurement setup" />;
@@ -115,11 +158,11 @@ export default function MeasurementsScreen(): React.ReactElement {
       ...current,
     ]);
 
-    setValue('');
     setError(undefined);
-    // Drop the override so the next entry starts from the stored default
-    // again. A one-off unit stays a one-off.
-    setOverride(undefined);
+    // Drop this point's draft entirely — value and unit. The next entry on it
+    // starts empty and back on the stored default; a one-off unit stays a
+    // one-off. Drafts on other points are untouched.
+    setDrafts((current) => clearDraft(current, pointId));
   };
 
   return (
@@ -159,13 +202,18 @@ export default function MeasurementsScreen(): React.ReactElement {
                       label={option.label}
                       selected={option.id === pointId}
                       tone={option.id === pointId ? 'accent' : 'neutral'}
-                      onPress={() => setPointId(option.id)}
+                      onPress={() => selectPoint(option.id)}
                     />
                   ))}
                 </Stack>
                 {point ? (
                   <Type variant="caption" tone="secondary">
                     {point.guideText}
+                  </Type>
+                ) : null}
+                {inProgress.length > 0 ? (
+                  <Type variant="caption" tone="tertiary">
+                    Still unsaved on {inProgress.join(', ')} — switching back keeps what you typed.
                   </Type>
                 ) : null}
               </Stack>
@@ -180,7 +228,7 @@ export default function MeasurementsScreen(): React.ReactElement {
                   <TextInput
                     value={value}
                     onChangeText={(next) => {
-                      setValue(next);
+                      patchDraft({ value: next });
                       if (error) setError(undefined);
                     }}
                     keyboardType="decimal-pad"
@@ -228,14 +276,14 @@ export default function MeasurementsScreen(): React.ReactElement {
                 </Type>
                 <UnitToggle
                   value={entryUnit}
-                  onChange={(next) => setOverride(next === defaultUnit ? undefined : next)}
+                  onChange={(next) => patchDraft({ unit: next === defaultUnit ? undefined : next })}
                   accessibilityLabel="Unit for this entry"
                 />
                 {override ? (
                   <Pressable
                     onPress={() => {
                       setDefaultUnit(override);
-                      setOverride(undefined);
+                      patchDraft({ unit: undefined });
                     }}
                     accessibilityRole="button"
                     hitSlop={8}
