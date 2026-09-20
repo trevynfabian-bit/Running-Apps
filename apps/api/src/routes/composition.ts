@@ -49,7 +49,8 @@ import {
   compositionMeasurements,
   compositionPhotos,
 } from '../db/schema.js';
-import { badRequest, notFound } from '../errors.js';
+import { API_ERROR_CODES } from '@running/contracts';
+import { ApiError, badRequest, notFound } from '../errors.js';
 import { logger } from '../observability/logger.js';
 import {
   photoStorage,
@@ -57,7 +58,7 @@ import {
   type PhotoSide,
   type StoredPhoto,
 } from '../services/photo-storage.js';
-import { visionStatus } from '../services/vision.js';
+import { PHOTO_MARGIN, analysePhotos, visionStatus } from '../services/vision.js';
 import type { AuthVariables } from '../security/auth.js';
 
 // Authentication is applied centrally in app.ts; see the PUBLIC_PATHS note there.
@@ -871,3 +872,102 @@ compositionRoutes.get('/sessions/:sessionId/body-fat', async (c) => {
  * if it does not, and nothing else.
  */
 compositionRoutes.get('/vision/status', (c) => c.json(visionStatus()));
+
+/**
+ * Read a session's photos and store the estimate.
+ *
+ * **One reading per session.** If an estimate already exists it is returned
+ * unchanged rather than the photographs being read again. The same images
+ * through the same model give the same answer, so a second run would be noise
+ * presented as new information — and it would spend the athlete's money and
+ * send their body photos off the server a second time for nothing.
+ *
+ * Only the images leave this server. No name, no athlete id, no measurements,
+ * no training history: the service is asked to look at pictures, and nothing it
+ * receives would identify whose they are.
+ */
+compositionRoutes.post('/sessions/:sessionId/body-fat/photo', async (c) => {
+  const athleteId = c.get('athleteId');
+  const sessionId = c.req.param('sessionId');
+
+  const { db } = await getDb();
+  await ownedSession(db, athleteId, sessionId);
+
+  const [existing] = await db
+    .select()
+    .from(bodyFatEstimates)
+    .where(and(eq(bodyFatEstimates.sessionId, sessionId), eq(bodyFatEstimates.method, 'ai')))
+    .limit(1);
+
+  if (existing) {
+    // Already read. Hand back what we have rather than paying to be told the
+    // same thing twice.
+    c.header('x-composition-cached', 'true');
+    return c.json(toEstimateDto(existing));
+  }
+
+  const status = visionStatus();
+  if (status.status !== 'active') {
+    throw new ApiError(503, API_ERROR_CODES.PROVIDER_UNAVAILABLE, status.message, {
+      serviceStatus: status.status,
+      suggestFormula: status.suggestFormula,
+    });
+  }
+
+  const photoRows = await db
+    .select()
+    .from(compositionPhotos)
+    .where(eq(compositionPhotos.sessionId, sessionId));
+
+  if (photoRows.length === 0) {
+    throw badRequest(
+      'This session has no photos to read. Take a set, or use the measurements method.',
+    );
+  }
+
+  const storage = photoStorage();
+  const photos: { side: string; contentType: string; bytes: Buffer }[] = [];
+
+  for (const row of photoRows) {
+    const file = await storage.read(row.storageKey);
+    // A row whose bytes are missing is skipped rather than failing the whole
+    // read: three usable sides still produce a usable answer.
+    if (file) photos.push({ side: row.side, contentType: file.contentType, bytes: file.bytes });
+  }
+
+  if (photos.length === 0) {
+    throw badRequest('None of this session photos could be opened.');
+  }
+
+  const reading = await analysePhotos(photos);
+
+  if (!reading.ok) {
+    const after = visionStatus();
+    throw new ApiError(502, API_ERROR_CODES.PROVIDER_UNAVAILABLE, reading.reason, {
+      serviceStatus: after.status,
+      suggestFormula: true,
+    });
+  }
+
+  const [row] = await db
+    .insert(bodyFatEstimates)
+    .values({
+      sessionId,
+      method: 'ai',
+      valueLow: reading.valueLow,
+      valueHigh: reading.valueHigh,
+      // A photograph is the weakest signal on offer and never earns more.
+      confidenceLabel: 'low',
+      serviceStatus: 'active',
+      basis: reading.note,
+      calculation: { margin: PHOTO_MARGIN, sides: photos.map((photo) => photo.side) },
+    })
+    .onConflictDoUpdate({
+      target: [bodyFatEstimates.sessionId, bodyFatEstimates.method],
+      set: { updatedAt: new Date() },
+    })
+    .returning();
+
+  logger.info('composition.photo_read', { sessionId, sides: photos.length });
+  return c.json(toEstimateDto(row!), 201);
+});

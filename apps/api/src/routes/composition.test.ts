@@ -1074,3 +1074,73 @@ describe('GET /api/composition/vision/status', () => {
     expect((await app.request('/api/composition/vision/status')).status).toBe(401);
   });
 });
+
+describe('POST /api/composition/sessions/:id/body-fat/photo', () => {
+  it('refuses with a 503 and points at the formula when no service is configured', async () => {
+    const created = (await (await post(sessionForm())).json()) as { id: string };
+
+    const response = await app.request(`/api/composition/sessions/${created.id}/body-fat/photo`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(response.status).toBe(503);
+    const body = (await response.json()) as {
+      error: { message: string; details?: { suggestFormula?: boolean } };
+    };
+
+    // An athlete told only that something is broken has a dead end.
+    expect(body.error.details?.suggestFormula).toBe(true);
+    expect(body.error.message).toContain('measurements method');
+  });
+
+  it('never leaves a half-written estimate behind when it cannot run', async () => {
+    const created = (await (await post(sessionForm())).json()) as { id: string };
+
+    await app.request(`/api/composition/sessions/${created.id}/body-fat/photo`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    const listed = (await (
+      await app.request(`/api/composition/sessions/${created.id}/body-fat`, {
+        headers: { authorization: `Bearer ${token}` },
+      })
+    ).json()) as { estimates: unknown[] };
+
+    expect(listed.estimates).toEqual([]);
+  });
+
+  it('reports another athlete session as not found', async () => {
+    const created = (await (await post(sessionForm())).json()) as { id: string };
+
+    const signUp = await app.request('/api/auth/signup', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: 'photo-intruder@example.test',
+        password: 'a-long-enough-password',
+        displayName: 'Intruder',
+      }),
+    });
+    const intruder = ((await signUp.json()) as { token: string }).token;
+
+    const response = await app.request(`/api/composition/sessions/${created.id}/body-fat/photo`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${intruder}` },
+    });
+
+    // Checked before the service is consulted, so a stranger cannot make us
+    // spend a request on someone else's photos.
+    expect(response.status).toBe(404);
+  });
+
+  it('requires a signed-in athlete', async () => {
+    const created = (await (await post(sessionForm())).json()) as { id: string };
+
+    const response = await app.request(`/api/composition/sessions/${created.id}/body-fat/photo`, {
+      method: 'POST',
+    });
+    expect(response.status).toBe(401);
+  });
+});

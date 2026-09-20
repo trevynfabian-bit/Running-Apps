@@ -53,7 +53,7 @@ const envSchema = z.object({
    */
   VISION_API_KEY: z.string().optional(),
   VISION_BASE_URL: z.string().default('https://api.anthropic.com'),
-  VISION_MODEL: z.string().default('claude-sonnet-5'),
+  VISION_MODEL: z.string().default('claude-opus-5'),
 
   AI_API_KEY: z.string().optional(),
   AI_MODEL: z.string().default('claude-sonnet-4-5'),

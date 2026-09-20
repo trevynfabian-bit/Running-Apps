@@ -9,6 +9,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadEnv, setEnvForTesting } from '../env.js';
 import {
   FAILURE_WINDOW_MS,
+  PHOTO_MARGIN,
+  analysePhotos,
   isVisionConfigured,
   recordVisionFailure,
   recordVisionSuccess,
@@ -120,5 +122,35 @@ describe('with a service configured', () => {
     expect(JSON.stringify(report)).not.toContain('test-key');
     expect(report).not.toHaveProperty('apiKey');
     expect(report).not.toHaveProperty('baseUrl');
+  });
+});
+
+describe('analysePhotos', () => {
+  it('refuses without a configured service, without reaching the network', async () => {
+    const result = await analysePhotos([
+      { side: 'front', contentType: 'image/jpeg', bytes: Buffer.from([0xff, 0xd8, 0xff]) },
+    ]);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toContain('configured');
+  });
+
+  it('refuses an empty photo set', async () => {
+    configure({ VISION_API_KEY: 'test-key' });
+
+    const result = await analysePhotos([]);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toContain('no photos');
+  });
+
+  it('claims a wider band than either circumference equation', async () => {
+    const { NAVY_STANDARD_ERROR, YMCA_STANDARD_ERROR } = await import('@running/core');
+
+    // A photograph is the weakest signal on offer — lighting, posture and
+    // clothing all move the answer — and the band has to say so.
+    expect(PHOTO_MARGIN).toBeGreaterThan(NAVY_STANDARD_ERROR);
+    expect(PHOTO_MARGIN).toBeGreaterThanOrEqual(YMCA_STANDARD_ERROR);
   });
 });
