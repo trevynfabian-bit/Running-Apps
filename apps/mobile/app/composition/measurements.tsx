@@ -31,7 +31,7 @@
  * contract in the PRD. Nothing here talks to the API yet.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import {
@@ -41,12 +41,9 @@ import {
   type LengthUnit,
 } from '@running/core';
 
-import {
-  STUB_CIRCUMFERENCE_POINTS,
-  findPoint,
-  type BodyMeasurement,
-} from '../../src/lib/body-composition';
+import { STUB_CIRCUMFERENCE_POINTS, findPoint } from '../../src/lib/body-composition';
 import { useActiveSession } from '../../src/lib/composition-session-store';
+import { SessionSummaryCard } from '../../src/components/composition';
 import { UNIT_OPTIONS, useMeasurementUnit } from '../../src/lib/measurement-units';
 import {
   clearDraft,
@@ -63,7 +60,6 @@ import {
   Card,
   Chip,
   Divider,
-  EmptyState,
   LoadingState,
   Screen,
   SectionHeader,
@@ -321,29 +317,13 @@ export default function MeasurementsScreen(): React.ReactElement {
         </View>
 
         <View>
-          <SectionHeader title="This session" />
-          {!session || session.measurements.length === 0 ? (
-            <EmptyState
-              title="Nothing recorded yet"
-              body="Pick a measure point, enter the number from the tape, and save it. The session starts with your first measurement."
-            />
-          ) : (
-            <Card>
-              <Stack gap={spacing.md}>
-                <Type variant="caption" tone="tertiary">
-                  {session.measurements.length} of {STUB_CIRCUMFERENCE_POINTS.length} points
-                  measured
-                </Type>
-                <Divider />
-                {session.measurements.map((entry, index) => (
-                  <React.Fragment key={entry.id}>
-                    {index > 0 ? <Divider /> : null}
-                    <EntryRow entry={entry} displayUnit={defaultUnit} />
-                  </React.Fragment>
-                ))}
-              </Stack>
-            </Card>
-          )}
+          <SectionHeader title="Session summary" />
+          <SessionSummaryCard
+            session={session}
+            points={STUB_CIRCUMFERENCE_POINTS}
+            displayUnit={defaultUnit}
+            highlightPointId={pointId}
+          />
         </View>
       </Stack>
     </Screen>
@@ -412,49 +392,5 @@ function UnitToggle({
         );
       })}
     </View>
-  );
-}
-
-/**
- * One saved measurement.
- *
- * Shown in the athlete's current default unit, with the original noted when the
- * two differ. Hiding that would make a set of entries look inconsistent for no
- * visible reason the first time someone switches their default.
- */
-function EntryRow({
-  entry,
-  displayUnit,
-}: {
-  entry: BodyMeasurement;
-  displayUnit: LengthUnit;
-}): React.ReactElement {
-  const point = findPoint(entry.pointId);
-  const converted = entry.recordedUnit !== displayUnit;
-
-  const capturedAt = useMemo(
-    () =>
-      new Date(entry.capturedAt).toLocaleTimeString(undefined, {
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
-    [entry.capturedAt],
-  );
-
-  return (
-    <Stack direction="row" justify="space-between" align="center" gap={spacing.md}>
-      <Stack gap={2} style={{ flexShrink: 1 }}>
-        <Type variant="bodyStrong">{point?.label ?? 'Measurement'}</Type>
-        <Type variant="caption" tone="tertiary">
-          {converted
-            ? `${capturedAt} · recorded as ${formatCanonicalLength(
-                entry.valueCm,
-                entry.recordedUnit,
-              )}`
-            : capturedAt}
-        </Type>
-      </Stack>
-      <Type variant="metricSmall">{formatCanonicalLength(entry.valueCm, displayUnit)}</Type>
-    </Stack>
   );
 }

@@ -17,7 +17,7 @@
  * inputs always produce the same session and tests need no clock.
  */
 
-import type { BodyMeasurement } from './body-composition';
+import type { BodyMeasurement, CircumferencePoint } from './body-composition';
 
 export interface BodyCompositionSession {
   id: string;
@@ -77,4 +77,61 @@ export function measuredPointIds(session: BodyCompositionSession): readonly stri
 /** A session with nothing in it yet is not worth saving or comparing. */
 export function isSessionEmpty(session: BodyCompositionSession): boolean {
   return session.measurements.length === 0;
+}
+
+// ---------------------------------------------------------------------------
+// Summary
+// ---------------------------------------------------------------------------
+
+export interface SessionSummaryRow {
+  point: CircumferencePoint;
+  /** Undefined when this point has not been measured in the session. */
+  measurement?: BodyMeasurement;
+}
+
+export interface SessionSummary {
+  /** One row per measure point, in anatomical order, measured or not. */
+  rows: readonly SessionSummaryRow[];
+  measuredCount: number;
+  totalPoints: number;
+  /** True once every point carries a value. */
+  isComplete: boolean;
+}
+
+/**
+ * Build the session's summary: every point, in order, with or without a value.
+ *
+ * Deliberately not "the list of what was saved". The recording list is
+ * newest-first, which is right for confirming the number just typed, but it
+ * makes a poor summary — the rows move around as the athlete works, and a point
+ * that was never measured is invisible precisely when they need to notice it.
+ *
+ * The summary is the opposite: a fixed set of rows in the order the athlete
+ * works down their body, where a gap reads as a gap.
+ *
+ * Ordering comes from each point's `sortOrder` rather than the order they were
+ * passed in, so a caller that filters or re-groups the point list cannot
+ * accidentally shuffle the summary.
+ */
+export function summariseSession(
+  session: BodyCompositionSession | undefined,
+  points: readonly CircumferencePoint[],
+): SessionSummary {
+  const rows = [...points]
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((point) => {
+      const measurement = session ? measurementForPoint(session, point.id) : undefined;
+      return measurement ? { point, measurement } : { point };
+    });
+
+  const measuredCount = rows.filter((row) => row.measurement !== undefined).length;
+
+  return {
+    rows,
+    measuredCount,
+    totalPoints: rows.length,
+    // An empty point list is not a complete session — it is a caller passing
+    // nothing, and reporting "complete" for it would be a lie.
+    isComplete: rows.length > 0 && measuredCount === rows.length,
+  };
 }
