@@ -29,6 +29,13 @@
       "when": 1789919698649,
       "tag": "0003_body_fat_estimates",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789932088347,
+      "tag": "0004_token_revocation",
+      "breakpoints": true
     }
   ]
 }

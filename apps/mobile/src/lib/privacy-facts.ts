@@ -37,7 +37,7 @@ export const STORAGE_FACTS: readonly PrivacyFact[] = [
   {
     title: 'The app talks to our servers over HTTPS',
     detail:
-      'Photos and measurements are encrypted in transit. Your sign-in token is kept in the device keychain, not in ordinary app storage.',
+      'Photos and measurements are encrypted in transit, and your photos are encrypted again on the server disk rather than sitting there as ordinary image files. Your sign-in token is kept in the device keychain, not in ordinary app storage.',
     location: 'both',
   },
   {
@@ -51,6 +51,12 @@ export const STORAGE_FACTS: readonly PrivacyFact[] = [
     detail:
       'Your token, the cached copies of anything the app downloaded, and your measurement-unit preference are all removed. Nothing about your body is left on the phone for whoever uses it next.',
     location: 'device',
+  },
+  {
+    title: 'Signing out also ends the session on our side',
+    detail:
+      'We stop accepting every token your account has been given, not just the one on this phone, so a copy taken from somewhere else cannot keep reading your photos. Nothing is deleted: your sessions and measurements come back when you sign in again.',
+    location: 'server',
   },
   {
     title: 'Deleting a session deletes all of it',

@@ -212,6 +212,15 @@ export const api = {
       { method: 'POST', body },
     ),
 
+  /**
+   * Withdraw every token this account holds.
+   *
+   * Sent before the local token is cleared, because clearing it first would
+   * leave nothing to authenticate the request with — and then the token would
+   * go on working server-side for the rest of its thirty days.
+   */
+  signOut: () => request<{ signedOutAt: string }>('/api/auth/signout', { method: 'POST' }),
+
   me: () => request<AthleteProfileResponse>('/api/me', { cacheKey: 'me' }),
 
   updateMe: (body: Record<string, unknown>) =>

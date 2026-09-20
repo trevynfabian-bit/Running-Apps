@@ -61,7 +61,10 @@ export function createApp(): Hono {
    * auth, so a new route is protected unless someone deliberately opens it.
    */
   const PUBLIC_PATHS: readonly RegExp[] = [
-    /^\/api\/auth\//,
+    // Named one by one rather than opening all of `/api/auth/`: signing out
+    // has to know whose account it is ending, so it belongs behind the
+    // boundary alongside everything else.
+    /^\/api\/auth\/(signup|signin)$/,
     /^\/api\/webhooks\//,
     // The OAuth redirect arrives from the provider's browser, carrying a
     // signed `state` parameter instead of a session.

@@ -10,7 +10,7 @@ import React, { createContext, useCallback, useContext, useEffect, useState } fr
 
 import { api, clearCache, clearToken, loadToken, saveToken, type ApiResult } from './api';
 import { clearDefaultUnit } from './measurement-units';
-import { runSignOutCleanups } from './sign-out-cleanup';
+import { runSignOutCleanups, signOutSequence } from './sign-out-cleanup';
 
 interface SessionValue {
   status: 'loading' | 'signed_out' | 'signed_in';
@@ -67,16 +67,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }): Re
   }, []);
 
   const signOut = useCallback(async () => {
-    // Clearing the cache matters: health data must not outlive the session on
-    // a shared device. The measurement-unit preference goes with it — it is not
-    // sensitive, but leaving it behind would set up the next person's entries
-    // from the previous person's choice.
-    //
-    // `runSignOutCleanups` covers everything held in memory by providers below
-    // this one — composition sessions, body photos, the readings derived from
-    // them. They cannot be reached from here directly, so they register
-    // themselves instead; see sign-out-cleanup.ts.
-    await Promise.all([clearToken(), clearCache(), clearDefaultUnit(), runSignOutCleanups()]);
+    await signOutSequence({
+      revoke: () => api.signOut(),
+      forget: [clearToken, clearCache, clearDefaultUnit, runSignOutCleanups],
+    });
     setDisplayName(undefined);
     setHasCompletedOnboarding(false);
     setStatus('signed_out');

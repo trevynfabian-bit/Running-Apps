@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "tokens_valid_from" timestamp with time zone DEFAULT now() NOT NULL;

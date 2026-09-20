@@ -44,6 +44,20 @@ export const users = pgTable(
     email: text('email').notNull(),
     passwordHash: text('password_hash').notNull(),
     displayName: text('display_name').notNull(),
+
+    /**
+     * Tokens issued before this instant are refused.
+     *
+     * Bearer tokens are self-contained and live for thirty days, so without a
+     * row to check against there is no way to take one back. Signing out would
+     * clear the phone and leave the token that reads body photographs working
+     * until it expired on its own. Moving this forward invalidates every token
+     * the account has ever been given, in one write.
+     */
+    tokensValidFrom: timestamp('tokens_valid_from', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+
     createdAt,
     updatedAt,
   },

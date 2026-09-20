@@ -9,11 +9,11 @@ import { signInSchema, signUpSchema, API_ERROR_CODES } from '@running/contracts'
 import { getDb } from '../db/client.js';
 import { athleteProfiles, auditLogs, users } from '../db/schema.js';
 import { hashPassword, verifyPassword } from '../security/crypto.js';
-import { issueToken } from '../security/auth.js';
+import { issueToken, type AuthVariables } from '../security/auth.js';
 import { ApiError, badRequest } from '../errors.js';
 import { logger } from '../observability/logger.js';
 
-export const authRoutes = new Hono();
+export const authRoutes = new Hono<{ Variables: AuthVariables }>();
 
 const DEFAULT_AVAILABILITY = {
   runDays: [1, 2, 4, 6, 0],
@@ -146,4 +146,44 @@ authRoutes.post('/signin', async (c) => {
     user: { id: user.id, email: user.email, displayName: user.displayName },
     hasCompletedOnboarding: athlete.hasCompletedOnboarding,
   });
+});
+
+/**
+ * Sign out: withdraw every token this account holds.
+ *
+ * Authenticated, unlike signup and signin, because it acts on the caller's own
+ * account and there is nothing to act on without knowing whose it is.
+ *
+ * It revokes all of the account's tokens rather than only the one presented.
+ * An athlete signing out of a phone they are handing on, or one they think has
+ * been taken, means "no more", not "no more from this handset" — and a bearer
+ * token carries nothing that would let the server tell one device from
+ * another anyway.
+ *
+ * Nothing is deleted here. The athlete's sessions, photographs and
+ * measurements stay where they are; what ends is the ability to reach them
+ * with the tokens issued so far. Signing back in returns all of it.
+ */
+authRoutes.post('/signout', async (c) => {
+  const userId = c.get('userId');
+  const athleteId = c.get('athleteId');
+
+  const { db } = await getDb();
+  const revokedAt = new Date();
+
+  await db
+    .update(users)
+    .set({ tokensValidFrom: revokedAt, updatedAt: revokedAt })
+    .where(eq(users.id, userId));
+
+  await db.insert(auditLogs).values({
+    userId,
+    athleteId,
+    action: 'user.signout',
+    resource: 'user',
+  });
+
+  logger.info('auth.signout', { userId });
+
+  return c.json({ signedOutAt: revokedAt.toISOString() });
 });
