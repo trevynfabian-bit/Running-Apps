@@ -1,12 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
   computePace,
+  convertLength,
+  formatCanonicalLength,
   formatDistance,
   formatDuration,
+  formatLength,
   formatPace,
+  fromCanonicalLength,
   paceToSpeed,
   parseDuration,
+  parseLength,
   speedToPace,
+  toCanonicalLength,
 } from './index.js';
 
 describe('pace and speed', () => {
@@ -97,5 +103,56 @@ describe('parseDuration', () => {
 
   it('tolerates surrounding whitespace', () => {
     expect(parseDuration('  45:02  ')).toBe(2702);
+  });
+});
+
+describe('circumference length', () => {
+  it('round-trips between centimetres and inches', () => {
+    const cm = 86.4;
+    expect(convertLength(convertLength(cm, 'cm', 'in'), 'in', 'cm')).toBeCloseTo(cm, 10);
+  });
+
+  it('converts using the exact inch definition', () => {
+    expect(convertLength(1, 'in', 'cm')).toBe(2.54);
+    expect(convertLength(2.54, 'cm', 'in')).toBeCloseTo(1, 10);
+  });
+
+  it('is a no-op when the units match', () => {
+    expect(convertLength(73.5, 'cm', 'cm')).toBe(73.5);
+    expect(convertLength(29, 'in', 'in')).toBe(29);
+  });
+
+  it('stores in centimetres whichever unit was typed', () => {
+    expect(toCanonicalLength(34, 'in')).toBeCloseTo(86.36, 10);
+    expect(toCanonicalLength(86.36, 'cm')).toBe(86.36);
+    expect(fromCanonicalLength(86.36, 'in')).toBeCloseTo(34, 10);
+  });
+
+  it('formats to one decimal in the requested unit', () => {
+    expect(formatLength(86.4, 'cm')).toBe('86.4 cm');
+    expect(formatLength(34, 'in')).toBe('34.0 in');
+    expect(formatCanonicalLength(86.36, 'in')).toBe('34.0 in');
+    expect(formatCanonicalLength(86.36, 'cm')).toBe('86.4 cm');
+  });
+
+  it('shows a placeholder rather than a nonsense number', () => {
+    expect(formatLength(Number.NaN, 'cm')).toBe('—');
+    expect(formatLength(-1, 'cm')).toBe('—');
+  });
+
+  it('parses a typed value with either decimal separator', () => {
+    expect(parseLength('86.4')).toBe(86.4);
+    expect(parseLength('86,4')).toBe(86.4);
+    expect(parseLength(' 34 ')).toBe(34);
+    expect(parseLength('.5')).toBe(0.5);
+  });
+
+  it('rejects input that is not a measurable circumference', () => {
+    expect(parseLength('')).toBeUndefined();
+    expect(parseLength('abc')).toBeUndefined();
+    expect(parseLength('0')).toBeUndefined();
+    expect(parseLength('-5')).toBeUndefined();
+    expect(parseLength('8.6.4')).toBeUndefined();
+    expect(parseLength('12cm')).toBeUndefined();
   });
 });

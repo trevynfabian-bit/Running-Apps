@@ -135,3 +135,79 @@ export function formatSignedDuration(deltaSeconds: number): string {
   const sign = deltaSeconds < 0 ? '−' : '+';
   return `${sign}${formatDuration(Math.abs(deltaSeconds))}`;
 }
+
+// ---------------------------------------------------------------------------
+// Body circumference length
+// ---------------------------------------------------------------------------
+
+/**
+ * Unit a circumference is entered and displayed in.
+ *
+ * Distinct from `DistanceUnit`: that one picks between kilometres and miles for
+ * running distance, this one picks between centimetres and inches for a tape
+ * measure. An athlete can reasonably want kilometres for their long run and
+ * inches around their waist, so the two preferences never share a value.
+ */
+export type LengthUnit = 'cm' | 'in';
+
+export const CM_PER_INCH = 2.54;
+
+/**
+ * Canonical storage unit for circumference.
+ *
+ * Every recorded value is kept in centimetres, exactly like distance is kept in
+ * metres. Inches are a display and entry concern only — that way a session
+ * recorded in inches and one recorded in centimetres can still be compared and
+ * trended without knowing how each was typed in.
+ */
+export const CANONICAL_LENGTH_UNIT: LengthUnit = 'cm';
+
+export const inchesToCm = (inches: number): number => inches * CM_PER_INCH;
+export const cmToInches = (cm: number): number => cm / CM_PER_INCH;
+
+/** Convert a circumference between the two supported units. */
+export function convertLength(value: number, from: LengthUnit, to: LengthUnit): number {
+  if (from === to) return value;
+  return from === 'cm' ? cmToInches(value) : inchesToCm(value);
+}
+
+/** Convert a value as entered into the canonical centimetre representation. */
+export const toCanonicalLength = (value: number, unit: LengthUnit): number =>
+  convertLength(value, unit, CANONICAL_LENGTH_UNIT);
+
+/** Convert a stored centimetre value into the unit the athlete reads in. */
+export const fromCanonicalLength = (valueCm: number, unit: LengthUnit): number =>
+  convertLength(valueCm, CANONICAL_LENGTH_UNIT, unit);
+
+/**
+ * Format a circumference for display.
+ *
+ * One decimal place in both units. A tape measure is not accurate to a tenth of
+ * a millimetre, and showing `86.36 cm` for a clean 34 in implies a precision the
+ * measurement does not have.
+ */
+export function formatLength(value: number, unit: LengthUnit = CANONICAL_LENGTH_UNIT): string {
+  if (!Number.isFinite(value) || value < 0) return '—';
+  return `${value.toFixed(1)} ${unit}`;
+}
+
+/** Format a stored centimetre value in the athlete's preferred unit. */
+export const formatCanonicalLength = (valueCm: number, unit: LengthUnit): string =>
+  formatLength(fromCanonicalLength(valueCm, unit), unit);
+
+/**
+ * Parse a typed circumference.
+ *
+ * Accepts a comma decimal separator because a number pad on an Indonesian or
+ * European locale produces one, and rejects anything else rather than letting
+ * `Number()` quietly turn stray input into a plausible-looking value.
+ * Zero and negatives are rejected: neither is a measurable circumference.
+ */
+export function parseLength(input: string): number | undefined {
+  const trimmed = input.trim().replace(',', '.');
+  if (!/^\d*\.?\d+$/.test(trimmed)) return undefined;
+
+  const value = Number(trimmed);
+  if (!Number.isFinite(value) || value <= 0) return undefined;
+  return value;
+}

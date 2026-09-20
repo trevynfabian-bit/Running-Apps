@@ -6,6 +6,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { ThemeProvider, useTheme } from '../src/design/theme';
 import { SessionProvider, useSession } from '../src/lib/session';
+import { MeasurementUnitProvider } from '../src/lib/measurement-units';
 import { LoadingState, Screen } from '../src/components/primitives';
 
 /**
@@ -48,6 +49,7 @@ function RootNavigator(): React.ReactElement {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="connections" options={{ title: 'Connected data' }} />
         <Stack.Screen name="workout/[id]" options={{ title: 'Workout' }} />
+        <Stack.Screen name="composition/measurements" options={{ title: 'Body measurements' }} />
         <Stack.Screen
           name="why"
           options={{ presentation: 'modal', title: 'Why this recommendation?' }}
@@ -63,8 +65,10 @@ export default function RootLayout(): React.ReactElement {
       <SafeAreaProvider>
         <ThemeProvider>
           <SessionProvider>
-            <StatusBar style="auto" />
-            <RootNavigator />
+            <MeasurementUnitProvider>
+              <StatusBar style="auto" />
+              <RootNavigator />
+            </MeasurementUnitProvider>
           </SessionProvider>
         </ThemeProvider>
       </SafeAreaProvider>

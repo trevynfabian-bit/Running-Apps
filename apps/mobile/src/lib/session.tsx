@@ -9,6 +9,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 
 import { api, clearCache, clearToken, loadToken, saveToken, type ApiResult } from './api';
+import { clearDefaultUnit } from './measurement-units';
 
 interface SessionValue {
   status: 'loading' | 'signed_out' | 'signed_in';
@@ -66,8 +67,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }): Re
 
   const signOut = useCallback(async () => {
     // Clearing the cache matters: health data must not outlive the session on
-    // a shared device.
-    await Promise.all([clearToken(), clearCache()]);
+    // a shared device. The measurement-unit preference goes with it — it is not
+    // sensitive, but leaving it behind would set up the next person's entries
+    // from the previous person's choice.
+    await Promise.all([clearToken(), clearCache(), clearDefaultUnit()]);
     setDisplayName(undefined);
     setHasCompletedOnboarding(false);
     setStatus('signed_out');
