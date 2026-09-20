@@ -8,10 +8,11 @@
   "scripts": {
     "dev": "node --import tsx/esm --watch src/index.ts",
     "start": "node --import tsx/esm src/index.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && drizzle-kit check",
     "test": "vitest run",
     "db:migrate": "node --import tsx/esm src/db/migrate.ts",
-    "db:seed": "node --import tsx/esm src/seed/index.ts"
+    "db:seed": "node --import tsx/esm src/seed/index.ts",
+    "db:check": "drizzle-kit check"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.5",

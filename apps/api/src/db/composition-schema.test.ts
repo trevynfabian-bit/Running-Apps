@@ -505,3 +505,115 @@ describe('body_fat_estimates', () => {
     ).toEqual([]);
   });
 });
+
+describe('account deletion', () => {
+  /**
+   * The privacy guarantee, checked end to end.
+   *
+   * Every composition table hangs off the athlete profile through a chain of
+   * cascades, so deleting the account removes all of it in one statement. That
+   * is the claim the privacy screen makes in words; this is the test that makes
+   * it true. Asserting it table by table from a session is not the same thing —
+   * the chain from the *user* is what an account deletion actually walks, and a
+   * single missing link anywhere along it leaves body data behind.
+   */
+  it('removes every composition table with the user, in one statement', async () => {
+    const [user] = await db
+      .insert(users)
+      .values({
+        email: 'leaving@example.test',
+        passwordHash: 'not-a-real-hash',
+        displayName: 'Leaving Athlete',
+      })
+      .returning();
+
+    const [profile] = await db
+      .insert(athleteProfiles)
+      .values({ userId: user!.id, displayName: 'Leaving Athlete' })
+      .returning();
+
+    const [session] = await db
+      .insert(bodyCompositionSessions)
+      .values({
+        athleteId: profile!.id,
+        capturedAt: new Date('2026-05-01T07:30:00.000Z'),
+        localDate: '2026-05-01',
+      })
+      .returning();
+
+    const [waist] = await db
+      .select()
+      .from(circumferencePoints)
+      .where(eq(circumferencePoints.code, 'waist'));
+
+    await db.insert(compositionPhotos).values({
+      sessionId: session!.id,
+      side: 'front',
+      storageKey: `${session!.id}/front-cascade`,
+      contentType: 'image/jpeg',
+      byteSize: 2048,
+      capturedAt: new Date('2026-05-01T07:30:00.000Z'),
+    });
+
+    await db.insert(compositionMeasurements).values({
+      sessionId: session!.id,
+      pointId: waist!.id,
+      valueCm: 86.4,
+      capturedAt: new Date('2026-05-01T07:30:00.000Z'),
+    });
+
+    await db.insert(bodyFatEstimates).values({
+      sessionId: session!.id,
+      method: 'navy',
+      valueLow: 15.3,
+      valueHigh: 22.3,
+      confidenceLabel: 'moderate',
+      basis: 'US Navy equation.',
+    });
+
+    // Everything is there before.
+    expect(
+      await db.select().from(compositionPhotos).where(eq(compositionPhotos.sessionId, session!.id)),
+    ).toHaveLength(1);
+
+    // The athlete-facing action is deleting the account. One statement.
+    await db.delete(users).where(eq(users.id, user!.id));
+
+    for (const [name, rows] of [
+      [
+        'sessions',
+        await db
+          .select()
+          .from(bodyCompositionSessions)
+          .where(eq(bodyCompositionSessions.id, session!.id)),
+      ],
+      [
+        'photos',
+        await db
+          .select()
+          .from(compositionPhotos)
+          .where(eq(compositionPhotos.sessionId, session!.id)),
+      ],
+      [
+        'measurements',
+        await db
+          .select()
+          .from(compositionMeasurements)
+          .where(eq(compositionMeasurements.sessionId, session!.id)),
+      ],
+      [
+        'estimates',
+        await db.select().from(bodyFatEstimates).where(eq(bodyFatEstimates.sessionId, session!.id)),
+      ],
+    ] as const) {
+      expect(rows, `${name} should be gone with the account`).toEqual([]);
+    }
+  });
+
+  it('leaves the shared measure points alone', async () => {
+    // Reference data is not the athlete's, and an account deletion that took
+    // it would break the app for everyone else.
+    const points = await db.select().from(circumferencePoints);
+    expect(points.length).toBeGreaterThan(0);
+  });
+});
