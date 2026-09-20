@@ -635,9 +635,7 @@ export const coachResponseSchema = z.object({
    * Statements tagged by epistemic status, so the UI can visually separate a
    * measurement from an inference.
    */
-  claims: z
-    .array(z.object({ kind: claimKindSchema, text: z.string() }))
-    .optional(),
+  claims: z.array(z.object({ kind: claimKindSchema, text: z.string() })).optional(),
   keyMetrics: z
     .array(z.object({ label: z.string(), value: z.string(), context: z.string().optional() }))
     .optional(),
@@ -751,6 +749,61 @@ export type AuthResponseDto = z.infer<typeof authResponseSchema>;
 // ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Body composition
+// ---------------------------------------------------------------------------
+
+/**
+ * The four sides of a body photo set.
+ *
+ * Fixed rather than free text because the comparison view pairs a session's
+ * front against the other session's front. A fifth side, or a typo, would have
+ * nothing to pair with.
+ */
+export const photoSideSchema = z.enum(['front', 'back', 'left', 'right']);
+export type PhotoSideDto = z.infer<typeof photoSideSchema>;
+
+export const PHOTO_SIDES = photoSideSchema.options;
+
+/**
+ * Metadata accompanying a photo upload.
+ *
+ * The files themselves travel as multipart parts, not in this object — a body
+ * photo base64'd into JSON inflates by a third and has to be held in memory as
+ * a string before it can be written anywhere.
+ *
+ * `capturedAt` is optional and defaults to arrival time. A client that has been
+ * offline since the morning should be able to say when the photos were actually
+ * taken, but it must not be required to.
+ */
+export const createCompositionSessionSchema = z.object({
+  capturedAt: isoDateTime.optional(),
+  /** The athlete's calendar day. Derived from their timezone when omitted. */
+  localDate: localDate.optional(),
+  note: z.string().max(1000).optional(),
+});
+export type CreateCompositionSessionDto = z.infer<typeof createCompositionSessionSchema>;
+
+export const compositionPhotoSchema = z.object({
+  id: z.string(),
+  side: photoSideSchema,
+  contentType: z.string(),
+  byteSize: z.number().int().nonnegative(),
+  capturedAt: isoDateTime,
+  /** Authenticated route that serves the bytes. Never a storage path. */
+  url: z.string(),
+});
+export type CompositionPhotoDto = z.infer<typeof compositionPhotoSchema>;
+
+export const compositionSessionSchema = z.object({
+  id: z.string(),
+  capturedAt: isoDateTime,
+  localDate: localDate,
+  note: z.string().optional(),
+  photos: z.array(compositionPhotoSchema),
+});
+export type CompositionSessionDto = z.infer<typeof compositionSessionSchema>;
 
 /**
  * Uniform error envelope. `code` is stable and machine-readable; `message` is
