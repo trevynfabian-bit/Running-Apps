@@ -211,3 +211,34 @@ export function parseLength(input: string): number | undefined {
   if (!Number.isFinite(value) || value <= 0) return undefined;
   return value;
 }
+
+/**
+ * Format a change in circumference, e.g. `−1.1 cm` or `+0.3 in`.
+ *
+ * Takes the delta in canonical centimetres and renders it in the requested
+ * unit. A delta scales cleanly between the two units because neither has an
+ * offset, so this is the same conversion as any other length.
+ *
+ * Deliberately no judgement about direction. A waist coming down and an arm
+ * coming down are not the same news, and the unit layer has no business
+ * deciding which one the athlete wanted — callers style it, this returns a
+ * number with a sign.
+ */
+export function formatSignedLength(
+  deltaCm: number,
+  unit: LengthUnit = CANONICAL_LENGTH_UNIT,
+): string {
+  if (!Number.isFinite(deltaCm)) return '—';
+
+  const value = fromCanonicalLength(deltaCm, unit);
+  const rounded = Number(value.toFixed(1));
+
+  // Rounds to nothing: say so rather than printing a signed zero, which reads
+  // as a change too small to have a direction.
+  if (rounded === 0) return `0.0 ${unit}`;
+
+  // U+2212 minus, matching formatSignedDuration — a hyphen is narrower than
+  // the plus and makes a column of deltas look ragged.
+  const sign = rounded < 0 ? '\u2212' : '+';
+  return `${sign}${Math.abs(rounded).toFixed(1)} ${unit}`;
+}

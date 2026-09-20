@@ -10,13 +10,14 @@
 import React, { useMemo } from 'react';
 import { View } from 'react-native';
 
-import { formatCanonicalLength, type LengthUnit } from '@running/core';
+import { formatCanonicalLength, formatSignedLength, type LengthUnit } from '@running/core';
 
 import type { BodyMeasurement, CircumferencePoint } from '../lib/body-composition';
+import type { MetricHistoryEntry } from '../lib/composition-history';
 import { summariseSession, type BodyCompositionSession } from '../lib/composition-session';
 import { radius, spacing } from '../design/tokens';
 import { useTheme } from '../design/theme';
-import { Card, Divider, Stack, Type } from './primitives';
+import { Card, Divider, EmptyState, Stack, Type } from './primitives';
 
 /**
  * Everything this session holds, point by point.
@@ -186,6 +187,117 @@ function SummaryRow({
         <Type variant="metricSmall" tone={measurement ? 'default' : 'tertiary'}>
           {measurement ? formatCanonicalLength(measurement.valueCm, displayUnit) : '—'}
         </Type>
+      </Stack>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Per-metric history
+// ---------------------------------------------------------------------------
+
+/**
+ * One measure point's values over time.
+ *
+ * Each row states its change from the session before it, because a column of
+ * numbers makes the reader do the subtraction to find the only thing they came
+ * for. The change is rendered in the athlete's current unit but computed in
+ * centimetres, so a session typed in inches does not produce a fictional jump.
+ *
+ * The direction is shown without being judged. A waist coming down and an arm
+ * coming down are not the same news, and the app cannot know which one the
+ * athlete was training for — so the arrow says which way, the colour stays
+ * neutral, and the athlete supplies the meaning.
+ */
+export function MetricHistoryCard({
+  pointLabel,
+  entries,
+  displayUnit,
+}: {
+  pointLabel: string;
+  entries: readonly MetricHistoryEntry[];
+  displayUnit: LengthUnit;
+}): React.ReactElement {
+  if (entries.length === 0) {
+    return (
+      <EmptyState
+        title={`No ${pointLabel.toLowerCase()} history yet`}
+        body="Once you have measured this point in more than one session, the values and the change between them show up here."
+      />
+    );
+  }
+
+  return (
+    <Card>
+      <Stack gap={spacing.md}>
+        {entries.map((entry, index) => (
+          <React.Fragment key={entry.sessionId}>
+            {index > 0 ? <Divider /> : null}
+            <HistoryRow entry={entry} displayUnit={displayUnit} isLatest={index === 0} />
+          </React.Fragment>
+        ))}
+      </Stack>
+    </Card>
+  );
+}
+
+function HistoryRow({
+  entry,
+  displayUnit,
+  isLatest,
+}: {
+  entry: MetricHistoryEntry;
+  displayUnit: LengthUnit;
+  isLatest: boolean;
+}): React.ReactElement {
+  const when = useMemo(
+    () =>
+      new Date(entry.capturedAt).toLocaleDateString(undefined, {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      }),
+    [entry.capturedAt],
+  );
+
+  const reading = formatCanonicalLength(entry.valueCm, displayUnit);
+
+  const change =
+    entry.changeCm === undefined
+      ? undefined
+      : {
+          // Arrow and text both, so the direction survives a screen reader and
+          // a colour-blind glance alike.
+          arrow: entry.changeCm < 0 ? '\u2193' : entry.changeCm > 0 ? '\u2191' : '\u2192',
+          label: formatSignedLength(entry.changeCm, displayUnit),
+        };
+
+  return (
+    <View
+      accessible
+      accessibilityLabel={
+        change
+          ? `${when}, ${reading}, ${change.label} from the session before`
+          : `${when}, ${reading}, first recorded`
+      }
+    >
+      <Stack direction="row" justify="space-between" align="center" gap={spacing.md}>
+        <Stack gap={2} style={{ flexShrink: 1 }}>
+          <Type variant="bodyStrong">{when}</Type>
+          <Type variant="caption" tone="tertiary">
+            {entry.recordedUnit === displayUnit
+              ? isLatest
+                ? 'Most recent'
+                : 'Recorded'
+              : `Recorded as ${formatCanonicalLength(entry.valueCm, entry.recordedUnit)}`}
+          </Type>
+        </Stack>
+        <Stack gap={2} align="flex-end">
+          <Type variant="metricSmall">{reading}</Type>
+          <Type variant="caption" tone="secondary">
+            {change ? `${change.arrow} ${change.label}` : 'First recorded'}
+          </Type>
+        </Stack>
       </Stack>
     </View>
   );

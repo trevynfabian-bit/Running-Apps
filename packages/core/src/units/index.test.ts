@@ -6,6 +6,7 @@ import {
   formatDistance,
   formatDuration,
   formatLength,
+  formatSignedLength,
   formatPace,
   fromCanonicalLength,
   paceToSpeed,
@@ -154,5 +155,31 @@ describe('circumference length', () => {
     expect(parseLength('-5')).toBeUndefined();
     expect(parseLength('8.6.4')).toBeUndefined();
     expect(parseLength('12cm')).toBeUndefined();
+  });
+});
+
+describe('formatSignedLength', () => {
+  it('signs the change and keeps one decimal', () => {
+    expect(formatSignedLength(-1.1, 'cm')).toBe('\u22121.1 cm');
+    expect(formatSignedLength(0.3, 'cm')).toBe('+0.3 cm');
+  });
+
+  it('renders the delta in the requested unit', () => {
+    // 2.54 cm is exactly one inch, in either direction.
+    expect(formatSignedLength(2.54, 'in')).toBe('+1.0 in');
+    expect(formatSignedLength(-2.54, 'in')).toBe('\u22121.0 in');
+  });
+
+  it('shows an unsigned zero for a change too small to have a direction', () => {
+    expect(formatSignedLength(0, 'cm')).toBe('0.0 cm');
+    expect(formatSignedLength(-0.02, 'cm')).toBe('0.0 cm');
+  });
+
+  it('defaults to centimetres', () => {
+    expect(formatSignedLength(-1.1)).toBe('\u22121.1 cm');
+  });
+
+  it('shows a placeholder for a non-finite delta', () => {
+    expect(formatSignedLength(Number.NaN, 'cm')).toBe('—');
   });
 });

@@ -43,7 +43,9 @@ import {
 
 import { STUB_CIRCUMFERENCE_POINTS, findPoint } from '../../src/lib/body-composition';
 import { useActiveSession } from '../../src/lib/composition-session-store';
-import { SessionSummaryCard } from '../../src/components/composition';
+import { MetricHistoryCard, SessionSummaryCard } from '../../src/components/composition';
+import { historyForPoint } from '../../src/lib/composition-history';
+import { STUB_SESSION_HISTORY } from '../../src/lib/composition-history-stub';
 import { UNIT_OPTIONS, useMeasurementUnit } from '../../src/lib/measurement-units';
 import {
   clearDraft,
@@ -123,6 +125,16 @@ export default function MeasurementsScreen(): React.ReactElement {
    */
   /** What this session already holds for the point on screen, if anything. */
   const alreadyRecorded = recorded(pointId);
+
+  /**
+   * This point's values over time, with the in-progress session at the front
+   * when it has one. Including it means a measurement just saved lands in the
+   * history immediately instead of appearing only after the session is filed.
+   */
+  const history = historyForPoint(
+    session ? [session, ...STUB_SESSION_HISTORY] : STUB_SESSION_HISTORY,
+    pointId,
+  );
 
   const inProgress = STUB_CIRCUMFERENCE_POINTS.filter(
     (option) =>
@@ -323,6 +335,15 @@ export default function MeasurementsScreen(): React.ReactElement {
             points={STUB_CIRCUMFERENCE_POINTS}
             displayUnit={defaultUnit}
             highlightPointId={pointId}
+          />
+        </View>
+
+        <View>
+          <SectionHeader title={`${point?.label ?? 'Measure point'} over time`} />
+          <MetricHistoryCard
+            pointLabel={point?.label ?? 'this point'}
+            entries={history}
+            displayUnit={defaultUnit}
           />
         </View>
       </Stack>
