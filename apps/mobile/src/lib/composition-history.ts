@@ -15,12 +15,17 @@
  *   come from. The change is computed in centimetres — the canonical unit — so
  *   it is the same number regardless of how either session was typed in.
  *
+ * The ordering and the deltas come from `@running/core`, which is what the API
+ * uses for the same job. The number on this screen and the number the server
+ * reports are therefore the same by construction, not by two implementations
+ * happening to agree.
+ *
  * Pure and side-effect free. Sessions are passed in, including the in-progress
  * one when it has a value, so a measurement just saved appears at the top of
  * the list immediately.
  */
 
-import type { LengthUnit } from '@running/core';
+import { withChanges, type LengthUnit } from '@running/core';
 
 import { measurementForPoint, type BodyCompositionSession } from './composition-session';
 
@@ -50,32 +55,23 @@ export function historyForPoint(
   sessions: readonly BodyCompositionSession[],
   pointId: string,
 ): readonly MetricHistoryEntry[] {
-  const measured = sessions
-    .map((session) => ({ session, measurement: measurementForPoint(session, pointId) }))
-    .filter(
-      (
-        candidate,
-      ): candidate is {
-        session: BodyCompositionSession;
-        measurement: NonNullable<typeof candidate.measurement>;
-      } => candidate.measurement !== undefined,
-    )
-    // Sort here rather than trusting the caller: the in-progress session is
-    // prepended by the screen, and a stub list is easy to leave unordered.
-    .sort((a, b) => Date.parse(b.session.capturedAt) - Date.parse(a.session.capturedAt));
+  const readings = sessions.flatMap((session) => {
+    const measurement = measurementForPoint(session, pointId);
+    if (!measurement) return [];
 
-  return measured.map((entry, index) => {
-    // The array is newest-first, so the *older* neighbour is the next index.
-    const older = measured[index + 1];
-
-    return {
-      sessionId: entry.session.id,
-      capturedAt: entry.session.capturedAt,
-      valueCm: entry.measurement.valueCm,
-      recordedUnit: entry.measurement.recordedUnit,
-      ...(older ? { changeCm: entry.measurement.valueCm - older.measurement.valueCm } : {}),
-    };
+    return [
+      {
+        sessionId: session.id,
+        capturedAt: session.capturedAt,
+        valueCm: measurement.valueCm,
+        recordedUnit: measurement.recordedUnit,
+      },
+    ];
   });
+
+  // Ordering and deltas both come from core; nothing is assumed about the
+  // order sessions arrive in, because the screen prepends the in-progress one.
+  return withChanges(readings);
 }
 
 /** The most recent value recorded for a point, across every session given. */

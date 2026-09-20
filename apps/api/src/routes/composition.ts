@@ -20,13 +20,14 @@ import {
   PHOTO_SIDES,
   createCompositionSessionSchema,
   recordMeasurementsSchema,
+  type MetricHistoryDto,
   type CompositionMeasurementDto,
   type CompositionPhotoDto,
   type CompositionSessionDto,
   type LengthUnitDto,
   type PhotoSideDto,
 } from '@running/contracts';
-import { toCanonicalLength, type LengthUnit } from '@running/core';
+import { toCanonicalLength, withChanges, type LengthUnit } from '@running/core';
 import { toLocalDate } from '@running/core';
 
 import { getDb } from '../db/client.js';
@@ -476,3 +477,92 @@ async function sessionMeasurements(
 
   return rows.map(toMeasurementDto);
 }
+
+// ---------------------------------------------------------------------------
+// History
+// ---------------------------------------------------------------------------
+
+/**
+ * One measure point's values over time, newest first.
+ *
+ * Each entry carries its change from the session before it, computed in
+ * canonical centimetres by `@running/core` — the same function the app uses, so
+ * the delta on the phone and the delta from the server are the same number by
+ * construction rather than by two implementations agreeing for now.
+ *
+ * One extra row is fetched beyond the page. The oldest entry *on the page* has
+ * a predecessor in the database, and it deserves its change: without the extra
+ * row a value's delta would appear or vanish depending on where the page
+ * boundary happened to fall.
+ *
+ * Sessions that did not measure this point are simply absent from the join, so
+ * skipping the neck for two months leaves a gap in time rather than a run of
+ * rows claiming it measured nothing.
+ */
+compositionRoutes.get('/points/:code/history', async (c) => {
+  const athleteId = c.get('athleteId');
+  const code = c.req.param('code');
+
+  const requested = Number(c.req.query('limit') ?? 24);
+  const limit = Number.isFinite(requested) ? Math.min(Math.max(Math.trunc(requested), 1), 200) : 24;
+
+  const { db } = await getDb();
+
+  const [point] = await db
+    .select()
+    .from(circumferencePoints)
+    .where(eq(circumferencePoints.code, code))
+    .limit(1);
+
+  if (!point) throw notFound('Measure point');
+
+  const rows = await db
+    .select({
+      sessionId: bodyCompositionSessions.id,
+      capturedAt: bodyCompositionSessions.capturedAt,
+      localDate: bodyCompositionSessions.localDate,
+      valueCm: compositionMeasurements.valueCm,
+      recordedUnit: compositionMeasurements.recordedUnit,
+    })
+    .from(compositionMeasurements)
+    .innerJoin(
+      bodyCompositionSessions,
+      eq(compositionMeasurements.sessionId, bodyCompositionSessions.id),
+    )
+    .where(
+      and(
+        eq(compositionMeasurements.pointId, point.id),
+        eq(bodyCompositionSessions.athleteId, athleteId),
+      ),
+    )
+    .orderBy(desc(bodyCompositionSessions.capturedAt))
+    // One beyond the page, so the last entry on it still gets its change.
+    .limit(limit + 1);
+
+  const page = rows.slice(0, limit);
+  const behind = rows[limit];
+
+  const entries = withChanges(
+    page.map((row) => ({
+      sessionId: row.sessionId,
+      capturedAt: row.capturedAt.toISOString(),
+      localDate: row.localDate,
+      valueCm: row.valueCm,
+      recordedUnit: row.recordedUnit as LengthUnitDto,
+    })),
+    behind ? { capturedAt: behind.capturedAt.toISOString(), valueCm: behind.valueCm } : undefined,
+  );
+
+  const body: MetricHistoryDto = {
+    point: {
+      id: point.id,
+      code: point.code,
+      label: point.label,
+      guideText: point.guideText,
+      sortOrder: point.sortOrder,
+    },
+    entries,
+  };
+
+  return c.json(body);
+});

@@ -477,3 +477,128 @@ describe('POST /api/composition/sessions/:id/measurements', () => {
     expect(session?.measurements.map((m) => m.pointCode)).toEqual(['chest', 'waist']);
   });
 });
+
+describe('GET /api/composition/points/:code/history', () => {
+  // A dedicated athlete, so the history under test is exactly what this block
+  // put there and not whatever earlier cases happened to record.
+  let historyToken: string;
+
+  beforeAll(async () => {
+    const signUp = await app.request('/api/auth/signup', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: 'history@example.test',
+        password: 'a-long-enough-password',
+        displayName: 'History Tester',
+      }),
+    });
+    historyToken = ((await signUp.json()) as { token: string }).token;
+
+    // Three months of waist measurements, plus one session that skipped it.
+    const series: [string, number | undefined][] = [
+      ['2026-06-14T07:30:00.000Z', 88.2],
+      ['2026-07-12T07:15:00.000Z', undefined],
+      ['2026-08-09T08:00:00.000Z', 86.0],
+      ['2026-09-06T07:45:00.000Z', 85.3],
+    ];
+
+    for (const [capturedAt, waist] of series) {
+      const created = (await (
+        await app.request('/api/composition/sessions', {
+          method: 'POST',
+          headers: { authorization: `Bearer ${historyToken}` },
+          body: sessionForm({}, { capturedAt }),
+        })
+      ).json()) as { id: string };
+
+      const measurements: Record<string, unknown>[] = [{ pointCode: 'chest', value: 99 }];
+      if (waist !== undefined) measurements.push({ pointCode: 'waist', value: waist });
+
+      await app.request(`/api/composition/sessions/${created.id}/measurements`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${historyToken}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ measurements }),
+      });
+    }
+  }, 60_000);
+
+  async function history(code: string, query = '', auth = historyToken): Promise<Response> {
+    return app.request(`/api/composition/points/${code}/history${query}`, {
+      headers: { authorization: `Bearer ${auth}` },
+    });
+  }
+
+  it('returns the point and its values newest first', async () => {
+    const body = (await (await history('waist')).json()) as {
+      point: { code: string; label: string; guideText: string };
+      entries: { valueCm: number; capturedAt: string }[];
+    };
+
+    expect(body.point.code).toBe('waist');
+    expect(body.point.guideText.length).toBeGreaterThan(0);
+    expect(body.entries.map((e) => e.valueCm)).toEqual([85.3, 86.0, 88.2]);
+  });
+
+  it('carries each entry change from the session before it', async () => {
+    const body = (await (await history('waist')).json()) as {
+      entries: { valueCm: number; changeCm?: number }[];
+    };
+
+    expect(body.entries[0]?.changeCm).toBeCloseTo(-0.7, 6);
+    // The July session did not measure the waist, so the change skips it.
+    expect(body.entries[1]?.changeCm).toBeCloseTo(-2.2, 6);
+    // Nothing older exists, so the oldest has no change at all.
+    expect(body.entries[2]?.changeCm).toBeUndefined();
+  });
+
+  it('omits sessions that did not measure the point', async () => {
+    const body = (await (await history('waist')).json()) as { entries: unknown[] };
+    const chest = (await (await history('chest')).json()) as { entries: unknown[] };
+
+    // Four sessions, four chest readings, three waist readings.
+    expect(chest.entries).toHaveLength(4);
+    expect(body.entries).toHaveLength(3);
+  });
+
+  it('still gives the oldest row on a page its change', async () => {
+    const page = (await (await history('waist', '?limit=2')).json()) as {
+      entries: { valueCm: number; changeCm?: number }[];
+    };
+
+    expect(page.entries).toHaveLength(2);
+    // The row behind the page is fetched so this delta does not vanish just
+    // because of where the boundary fell.
+    expect(page.entries[1]?.changeCm).toBeCloseTo(-2.2, 6);
+  });
+
+  it('returns an empty history for a point never measured', async () => {
+    const body = (await (await history('thigh')).json()) as {
+      point: { code: string };
+      entries: unknown[];
+    };
+
+    expect(body.point.code).toBe('thigh');
+    expect(body.entries).toEqual([]);
+  });
+
+  it('reports an unknown measure point as not found', async () => {
+    expect((await history('left_earlobe')).status).toBe(404);
+  });
+
+  it('never mixes in another athlete measurements', async () => {
+    // `token` belongs to the athlete used by the earlier blocks, who has waist
+    // readings of their own.
+    const mine = (await (await history('waist')).json()) as { entries: { valueCm: number }[] };
+    const theirs = (await (await history('waist', '', token)).json()) as {
+      entries: { valueCm: number }[];
+    };
+
+    expect(mine.entries.map((e) => e.valueCm)).toEqual([85.3, 86.0, 88.2]);
+    expect(theirs.entries.map((e) => e.valueCm)).not.toEqual(mine.entries.map((e) => e.valueCm));
+  });
+
+  it('requires a signed-in athlete', async () => {
+    expect((await app.request('/api/composition/points/waist/history')).status).toBe(401);
+  });
+});

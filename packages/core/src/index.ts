@@ -17,6 +17,7 @@ export * from './domain/training.js';
 export * from './domain/workout.js';
 
 // --- Engines --------------------------------------------------------------
+export * from './engines/composition.js';
 export * from './engines/decision.js';
 export * from './engines/dedup.js';
 export * from './engines/efficiency.js';
