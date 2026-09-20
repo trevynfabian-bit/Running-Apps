@@ -19,6 +19,7 @@ import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import {
   PHOTO_SIDES,
   createCompositionSessionSchema,
+  recordMeasurementSchema,
   recordMeasurementsSchema,
   type MetricHistoryDto,
   type CompositionMeasurementDto,
@@ -404,6 +405,11 @@ compositionRoutes.post('/sessions/:sessionId/measurements', async (c) => {
   const athleteId = c.get('athleteId');
   const sessionId = c.req.param('sessionId');
 
+  // Authorize before validating, as the correction endpoint does: a caller
+  // with no claim on this session gets the same answer whatever they sent.
+  const { db } = await getDb();
+  const session = await ownedSession(db, athleteId, sessionId);
+
   const parsed = recordMeasurementsSchema.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) {
     throw badRequest(
@@ -411,9 +417,6 @@ compositionRoutes.post('/sessions/:sessionId/measurements', async (c) => {
       { issues: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`) },
     );
   }
-
-  const { db } = await getDb();
-  const session = await ownedSession(db, athleteId, sessionId);
 
   // Resolve codes to ids in one query. An unknown code is the athlete's client
   // being out of date, so it is named rather than silently dropped.
@@ -565,4 +568,114 @@ compositionRoutes.get('/points/:code/history', async (c) => {
   };
 
   return c.json(body);
+});
+
+/**
+ * Resolve a measure point by its code, or say it does not exist.
+ *
+ * Codes, not uuids, in every path an athlete's client builds: a uuid differs
+ * between environments and turns a bookmarked URL into a 404 after a restore.
+ */
+async function pointByCode(
+  db: Awaited<ReturnType<typeof getDb>>['db'],
+  code: string,
+): Promise<{ id: string; code: string }> {
+  const [point] = await db
+    .select()
+    .from(circumferencePoints)
+    .where(eq(circumferencePoints.code, code))
+    .limit(1);
+
+  if (!point) throw notFound('Measure point');
+  return point;
+}
+
+/**
+ * Correct a value already recorded in a session.
+ *
+ * Validated by the same schema the create path uses, with the point code taken
+ * from the URL — so the plausible-range check cannot drift between recording a
+ * measurement and fixing one.
+ *
+ * A point with nothing recorded is a 404 rather than an implicit create. The
+ * client asking to correct a measurement believes one is there; if it is not,
+ * its view is stale and quietly inventing a reading would hide that.
+ *
+ * `capturedAt` is left alone unless the caller explicitly supplies one. It
+ * records when the athlete stood there with the tape, and fixing a digit typed
+ * wrong does not move that moment — restamping would file a June measurement
+ * under September and corrupt every trend built on it.
+ */
+compositionRoutes.patch('/sessions/:sessionId/measurements/:pointCode', async (c) => {
+  const athleteId = c.get('athleteId');
+  const sessionId = c.req.param('sessionId');
+
+  // Authorize before validating. A caller with no claim on this session gets
+  // the same answer whatever they sent, and we do not spend work parsing a
+  // payload on behalf of someone who cannot act on it either way.
+  const { db } = await getDb();
+  await ownedSession(db, athleteId, sessionId);
+  const point = await pointByCode(db, c.req.param('pointCode'));
+
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  const parsed = recordMeasurementSchema.safeParse({ ...body, pointCode: point.code });
+  if (!parsed.success) {
+    throw badRequest(parsed.error.issues[0]?.message ?? 'That measurement was not valid.', {
+      issues: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`),
+    });
+  }
+
+  const updated = await db
+    .update(compositionMeasurements)
+    .set({
+      valueCm: toCanonicalLength(parsed.data.value, parsed.data.unit as LengthUnit),
+      recordedUnit: parsed.data.unit,
+      ...(parsed.data.capturedAt ? { capturedAt: new Date(parsed.data.capturedAt) } : {}),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(compositionMeasurements.sessionId, sessionId),
+        eq(compositionMeasurements.pointId, point.id),
+      ),
+    )
+    .returning();
+
+  if (updated.length === 0) throw notFound('Measurement');
+
+  return c.json({ measurements: await sessionMeasurements(db, sessionId) });
+});
+
+/**
+ * Remove a value from a session.
+ *
+ * Reports whether anything was actually removed instead of failing when there
+ * was nothing there, so a retry after a dropped connection is harmless. The
+ * session survives losing its last circumference: it may still hold photos, and
+ * discarding a whole session is a separate, deliberate action rather than a
+ * side effect of deleting one number.
+ */
+compositionRoutes.delete('/sessions/:sessionId/measurements/:pointCode', async (c) => {
+  const athleteId = c.get('athleteId');
+  const sessionId = c.req.param('sessionId');
+
+  const { db } = await getDb();
+  await ownedSession(db, athleteId, sessionId);
+  const point = await pointByCode(db, c.req.param('pointCode'));
+
+  const removed = await db
+    .delete(compositionMeasurements)
+    .where(
+      and(
+        eq(compositionMeasurements.sessionId, sessionId),
+        eq(compositionMeasurements.pointId, point.id),
+      ),
+    )
+    .returning();
+
+  return c.json({
+    ok: true,
+    deleted: removed.length > 0,
+    measurements: await sessionMeasurements(db, sessionId),
+  });
 });

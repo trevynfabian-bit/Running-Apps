@@ -602,3 +602,203 @@ describe('GET /api/composition/points/:code/history', () => {
     expect((await app.request('/api/composition/points/waist/history')).status).toBe(401);
   });
 });
+
+describe('correcting and deleting a measurement', () => {
+  async function seeded(): Promise<{ sessionId: string; capturedAt: string }> {
+    const capturedAt = '2026-06-14T07:30:00.000Z';
+    const created = (await (
+      await post(sessionForm({}, { capturedAt, localDate: '2026-06-14' }))
+    ).json()) as { id: string };
+
+    await app.request(`/api/composition/sessions/${created.id}/measurements`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        measurements: [
+          { pointCode: 'waist', value: 86.4 },
+          { pointCode: 'chest', value: 99.2 },
+        ],
+      }),
+    });
+
+    return { sessionId: created.id, capturedAt };
+  }
+
+  async function patch(
+    sessionId: string,
+    pointCode: string,
+    body: unknown,
+    auth = token,
+  ): Promise<Response> {
+    return app.request(`/api/composition/sessions/${sessionId}/measurements/${pointCode}`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${auth}`, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
+
+  async function remove(sessionId: string, pointCode: string, auth = token): Promise<Response> {
+    return app.request(`/api/composition/sessions/${sessionId}/measurements/${pointCode}`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${auth}` },
+    });
+  }
+
+  it('corrects a value without moving when it was taken', async () => {
+    const { sessionId, capturedAt } = await seeded();
+
+    const body = (await (await patch(sessionId, 'waist', { value: 85.1 })).json()) as {
+      measurements: { pointCode: string; valueCm: number; capturedAt: string }[];
+    };
+    const waist = body.measurements.find((m) => m.pointCode === 'waist');
+
+    expect(waist?.valueCm).toBeCloseTo(85.1, 6);
+    // A typo fixed today does not relocate a June measurement.
+    expect(waist?.capturedAt).toBe(capturedAt);
+  });
+
+  it('can change the unit the value was read in', async () => {
+    const { sessionId } = await seeded();
+
+    const body = (await (await patch(sessionId, 'waist', { value: 34, unit: 'in' })).json()) as {
+      measurements: { pointCode: string; valueCm: number; recordedUnit: string }[];
+    };
+    const waist = body.measurements.find((m) => m.pointCode === 'waist');
+
+    expect(waist?.recordedUnit).toBe('in');
+    expect(waist?.valueCm).toBeCloseTo(86.36, 6);
+  });
+
+  it('leaves the other measurements alone', async () => {
+    const { sessionId } = await seeded();
+
+    const body = (await (await patch(sessionId, 'waist', { value: 85.1 })).json()) as {
+      measurements: { pointCode: string; valueCm: number }[];
+    };
+
+    expect(body.measurements.find((m) => m.pointCode === 'chest')?.valueCm).toBeCloseTo(99.2, 6);
+    expect(body.measurements).toHaveLength(2);
+  });
+
+  it('applies the same range check as recording does', async () => {
+    const { sessionId } = await seeded();
+
+    // The bound cannot drift between saving a measurement and fixing one.
+    expect((await patch(sessionId, 'waist', { value: 864 })).status).toBe(400);
+    expect((await patch(sessionId, 'waist', { value: 0 })).status).toBe(400);
+  });
+
+  it('refuses to correct a point with nothing recorded', async () => {
+    const { sessionId } = await seeded();
+
+    // Not an implicit create: the client believes a reading is there, and
+    // inventing one would hide that its view is stale.
+    expect((await patch(sessionId, 'thigh', { value: 55.1 })).status).toBe(404);
+  });
+
+  it('reports an unknown measure point as not found', async () => {
+    const { sessionId } = await seeded();
+    expect((await patch(sessionId, 'left_earlobe', { value: 6 })).status).toBe(404);
+  });
+
+  it('deletes one value and leaves the rest', async () => {
+    const { sessionId } = await seeded();
+
+    const body = (await (await remove(sessionId, 'waist')).json()) as {
+      deleted: boolean;
+      measurements: { pointCode: string }[];
+    };
+
+    expect(body.deleted).toBe(true);
+    expect(body.measurements.map((m) => m.pointCode)).toEqual(['chest']);
+  });
+
+  it('is safe to retry', async () => {
+    const { sessionId } = await seeded();
+
+    await remove(sessionId, 'waist');
+    const second = await remove(sessionId, 'waist');
+
+    // A retry after a dropped connection is harmless, and still says plainly
+    // that nothing was removed this time.
+    expect(second.status).toBe(200);
+    expect(((await second.json()) as { deleted: boolean }).deleted).toBe(false);
+  });
+
+  it('keeps the session when its last circumference goes', async () => {
+    const { sessionId } = await seeded();
+
+    await remove(sessionId, 'waist');
+    await remove(sessionId, 'chest');
+
+    const listed = (await (await list('?limit=100')).json()) as {
+      sessions: { id: string; photos: unknown[]; measurements: unknown[] }[];
+    };
+    const session = listed.sessions.find((s) => s.id === sessionId);
+
+    // It still holds photos; discarding a session is a separate action.
+    expect(session).toBeDefined();
+    expect(session?.photos).toHaveLength(4);
+    expect(session?.measurements).toEqual([]);
+  });
+
+  it('drops the entry from that point history', async () => {
+    const { sessionId } = await seeded();
+
+    const before = (await (
+      await app.request('/api/composition/points/waist/history', {
+        headers: { authorization: `Bearer ${token}` },
+      })
+    ).json()) as { entries: { sessionId: string }[] };
+    expect(before.entries.some((e) => e.sessionId === sessionId)).toBe(true);
+
+    await remove(sessionId, 'waist');
+
+    const after = (await (
+      await app.request('/api/composition/points/waist/history', {
+        headers: { authorization: `Bearer ${token}` },
+      })
+    ).json()) as { entries: { sessionId: string }[] };
+    expect(after.entries.some((e) => e.sessionId === sessionId)).toBe(false);
+  });
+
+  it('will not let another athlete correct or delete', async () => {
+    const { sessionId } = await seeded();
+
+    const signUp = await app.request('/api/auth/signup', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: 'meddler@example.test',
+        password: 'a-long-enough-password',
+        displayName: 'Meddler',
+      }),
+    });
+    const meddler = ((await signUp.json()) as { token: string }).token;
+
+    expect((await patch(sessionId, 'waist', { value: 80 }, meddler)).status).toBe(404);
+    expect((await remove(sessionId, 'waist', meddler)).status).toBe(404);
+
+    // And the value is untouched.
+    const body = (await (await patch(sessionId, 'waist', { value: 85.1 })).json()) as {
+      measurements: { pointCode: string; valueCm: number }[];
+    };
+    expect(body.measurements.find((m) => m.pointCode === 'waist')?.valueCm).toBeCloseTo(85.1, 6);
+  });
+
+  it('requires a signed-in athlete', async () => {
+    const { sessionId } = await seeded();
+
+    const url = `/api/composition/sessions/${sessionId}/measurements/waist`;
+    expect((await app.request(url, { method: 'DELETE' })).status).toBe(401);
+    expect(
+      (
+        await app.request(url, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ value: 85.1 }),
+        })
+      ).status,
+    ).toBe(401);
+  });
+});
