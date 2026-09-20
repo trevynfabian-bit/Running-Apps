@@ -21,11 +21,12 @@ import {
 
 import type { BodyMeasurement, CircumferencePoint } from '../lib/body-composition';
 import type { MetricHistoryEntry } from '../lib/composition-history';
+import { CONFIDENCE_LABELS, formatRange, rangeWidth, type BodyFatEstimate } from '../lib/body-fat';
 import { summariseSession, type BodyCompositionSession } from '../lib/composition-session';
 import { UNIT_OPTIONS } from '../lib/measurement-units';
 import { radius, spacing } from '../design/tokens';
 import { useTheme } from '../design/theme';
-import { Button, Card, Divider, EmptyState, Stack, Type } from './primitives';
+import { Button, Card, Chip, Divider, EmptyState, Stack, Type } from './primitives';
 
 /**
  * Everything this session holds, point by point.
@@ -580,5 +581,81 @@ export function UnitToggle({
         );
       })}
     </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Body fat
+// ---------------------------------------------------------------------------
+
+/**
+ * A body fat estimate, shown as the band it is.
+ *
+ * The band is the headline, at metric size, and the confidence sits next to it
+ * rather than under a "details" tap. A number this soft has to carry its own
+ * caveat or the caveat does not travel with it.
+ *
+ * There is deliberately no single figure anywhere in this component — not a
+ * midpoint, not a "≈". The width of the band is the honest statement of how
+ * much the method knows, and a midpoint would let the athlete quietly discard
+ * it.
+ */
+export function BodyFatRange({ estimate }: { estimate: BodyFatEstimate }): React.ReactElement {
+  const theme = useTheme();
+
+  // Low confidence gets a caution tone rather than a neutral one: it is the
+  // case where an athlete most needs to not read the band as a fact.
+  const tone: 'positive' | 'neutral' | 'caution' =
+    estimate.confidence === 'high'
+      ? 'positive'
+      : estimate.confidence === 'moderate'
+        ? 'neutral'
+        : 'caution';
+
+  return (
+    <Card>
+      <Stack gap={spacing.lg}>
+        <Stack gap={spacing.xs}>
+          <Type
+            variant="metricLarge"
+            // One label for the whole reading: a screen reader should not have
+            // to assemble "17.4", "to", "20.2" into a range itself.
+            accessibilityRole="text"
+          >
+            {formatRange(estimate)}
+          </Type>
+          <Type variant="caption" tone="tertiary">
+            A {rangeWidth(estimate).toFixed(1)} point band, not a single figure
+          </Type>
+        </Stack>
+
+        <Stack direction="row" gap={spacing.sm} align="center" style={{ flexWrap: 'wrap' }}>
+          <Chip label={CONFIDENCE_LABELS[estimate.confidence]} tone={tone} selected />
+          {estimate.serviceStatus && estimate.serviceStatus !== 'active' ? (
+            <Chip
+              label={estimate.serviceStatus === 'failed' ? 'Service failed' : 'Service unavailable'}
+              tone="negative"
+              selected
+            />
+          ) : null}
+        </Stack>
+
+        <View
+          style={{
+            height: StyleSheet.hairlineWidth,
+            backgroundColor: theme.color.border,
+          }}
+        />
+
+        <Stack gap={spacing.xs}>
+          <Type variant="overline" tone="tertiary" accessibilityRole="header">
+            WHAT IT IS BASED ON
+          </Type>
+          <Type variant="body" tone="secondary">
+            {estimate.basis}
+          </Type>
+        </Stack>
+      </Stack>
+    </Card>
   );
 }
