@@ -861,6 +861,59 @@ export const compositionMeasurements = pgTable(
   ],
 );
 
+/**
+ * A body fat estimate for one session.
+ *
+ * Stored as a band, never a figure. Every method available is an estimate built
+ * from proxies — a tape and population-fitted coefficients, or a photograph —
+ * and none of them measures body fat. There is deliberately no `value` column
+ * for a reader to latch onto: a single number with one decimal reads as a
+ * measurement, gets written into a training log, and gets compared week to week
+ * as though the difference meant something.
+ *
+ * Unique on (session, method): one formula result and one photo result per
+ * session. Re-running the formula on unchanged inputs gives the same answer, and
+ * re-reading the same photographs is out of scope — so a second row for the same
+ * method would be either a duplicate or noise presented as new information.
+ *
+ * `service_status` is meaningful only for the AI method and records what the
+ * vision service did, which is what lets the app explain an absent result
+ * instead of showing a blank.
+ */
+export const bodyFatEstimates = pgTable(
+  'body_fat_estimates',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => bodyCompositionSessions.id, { onDelete: 'cascade' }),
+    method: text('method').notNull(), // formula | ai
+    /** Lower bound, percent. */
+    valueLow: doublePrecision('value_low').notNull(),
+    /** Upper bound, percent. */
+    valueHigh: doublePrecision('value_high').notNull(),
+    confidenceLabel: text('confidence_label').notNull(), // low | moderate | high
+    /** Only set for the AI method. active | unavailable | failed */
+    serviceStatus: text('service_status'),
+    /** One sentence on what the result rests on, shown to the athlete. */
+    basis: text('basis').notNull().default(''),
+    /**
+     * The inputs and steps that produced a formula result.
+     *
+     * Kept so the athlete can inspect a stored estimate months later without
+     * the app re-deriving it from measurements that may since have been
+     * corrected — the explanation has to match the number it explains.
+     */
+    calculation: jsonb('calculation'),
+    createdAt,
+    updatedAt,
+  },
+  (t) => [
+    uniqueIndex('body_fat_estimates_session_method_unique').on(t.sessionId, t.method),
+    index('body_fat_estimates_session').on(t.sessionId),
+  ],
+);
+
 // ---------------------------------------------------------------------------
 // Sync and observability
 // ---------------------------------------------------------------------------
@@ -967,6 +1020,7 @@ export const schema = {
   compositionPhotos,
   circumferencePoints,
   compositionMeasurements,
+  bodyFatEstimates,
   syncJobs,
   syncEvents,
   auditLogs,

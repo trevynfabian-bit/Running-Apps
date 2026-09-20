@@ -15,6 +15,7 @@ import { runMigrations } from './migrate.js';
 import {
   athleteProfiles,
   bodyCompositionSessions,
+  bodyFatEstimates,
   circumferencePoints,
   compositionMeasurements,
   compositionPhotos,
@@ -407,6 +408,100 @@ describe('composition_measurements', () => {
         .select()
         .from(compositionMeasurements)
         .where(eq(compositionMeasurements.sessionId, sessionId)),
+    ).toEqual([]);
+  });
+});
+
+describe('body_fat_estimates', () => {
+  function estimate(sessionId: string, method: string, overrides: Record<string, unknown> = {}) {
+    return {
+      sessionId,
+      method,
+      valueLow: 15.3,
+      valueHigh: 22.3,
+      confidenceLabel: 'moderate',
+      basis: 'US Navy equation from this session.',
+      ...overrides,
+    };
+  }
+
+  it('stores a band, and has no column for a single figure', async () => {
+    const sessionId = await createSession('2026-01-05T07:30:00.000Z', '2026-01-05');
+
+    await db.insert(bodyFatEstimates).values(estimate(sessionId, 'formula'));
+
+    const [row] = await db
+      .select()
+      .from(bodyFatEstimates)
+      .where(eq(bodyFatEstimates.sessionId, sessionId));
+
+    expect(row!.valueLow).toBeCloseTo(15.3, 6);
+    expect(row!.valueHigh).toBeCloseTo(22.3, 6);
+    // A single number with one decimal reads as a measurement.
+    expect(row).not.toHaveProperty('value');
+  });
+
+  it('holds one result per method per session', async () => {
+    const sessionId = await createSession('2026-01-06T07:30:00.000Z', '2026-01-06');
+
+    await db.insert(bodyFatEstimates).values(estimate(sessionId, 'formula'));
+
+    // Re-running the formula on unchanged inputs gives the same answer, so a
+    // second row would be a duplicate rather than new information.
+    await expect(
+      db.insert(bodyFatEstimates).values(estimate(sessionId, 'formula', { valueLow: 16 })),
+    ).rejects.toThrow();
+  });
+
+  it('lets the two methods coexist for one session', async () => {
+    const sessionId = await createSession('2026-01-07T07:30:00.000Z', '2026-01-07');
+
+    await db.insert(bodyFatEstimates).values(estimate(sessionId, 'formula'));
+    await expect(
+      db
+        .insert(bodyFatEstimates)
+        .values(estimate(sessionId, 'ai', { serviceStatus: 'active', confidenceLabel: 'low' })),
+    ).resolves.toBeTruthy();
+  });
+
+  it('keeps the calculation that produced a formula result', async () => {
+    const sessionId = await createSession('2026-01-08T07:30:00.000Z', '2026-01-08');
+    const steps = [{ label: 'Waist minus neck', expression: '86.4 − 38.1', value: 48.3 }];
+
+    await db
+      .insert(bodyFatEstimates)
+      .values(estimate(sessionId, 'formula', { calculation: { steps } }));
+
+    const [row] = await db
+      .select()
+      .from(bodyFatEstimates)
+      .where(eq(bodyFatEstimates.sessionId, sessionId));
+
+    // The explanation has to match the number it explains, even after the
+    // measurements behind it are corrected.
+    expect(row!.calculation).toEqual({ steps });
+  });
+
+  it('leaves service status unset for a formula result', async () => {
+    const sessionId = await createSession('2026-01-09T07:30:00.000Z', '2026-01-09');
+    await db.insert(bodyFatEstimates).values(estimate(sessionId, 'formula'));
+
+    const [row] = await db
+      .select()
+      .from(bodyFatEstimates)
+      .where(eq(bodyFatEstimates.sessionId, sessionId));
+
+    expect(row!.serviceStatus).toBeNull();
+  });
+
+  it('goes with the session when the session is deleted', async () => {
+    const sessionId = await createSession('2026-01-10T07:30:00.000Z', '2026-01-10');
+    await db.insert(bodyFatEstimates).values(estimate(sessionId, 'formula'));
+
+    await db.delete(bodyCompositionSessions).where(eq(bodyCompositionSessions.id, sessionId));
+
+    expect(
+      await db.select().from(bodyFatEstimates).where(eq(bodyFatEstimates.sessionId, sessionId)),
     ).toEqual([]);
   });
 });
