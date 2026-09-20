@@ -440,7 +440,7 @@
     "summary": "Konfigurasi Metro untuk monorepo pnpm: watchFolders ke root workspace agar perubahan packages/* memicu reload, nodeModulesPaths app dan root, hierarchical lookup tetap aktif untuk layout symlink pnpm, dan resolveRequest kustom yang menulis ulang specifier relatif berakhiran .js ke file .ts, .tsx, .mts, atau .cts yang ada di disk sehingga package bersama tetap memakai import ESM yang benar."
   },
   "apps/mobile/app/_layout.tsx": {
-    "summary": "Root layout Expo Router: membungkus app dengan GestureHandlerRootView, SafeAreaProvider, ThemeProvider, dan SessionProvider. RootNavigator memakai Stack.Protected berdasarkan status sesi dari useSession: loading menampilkan LoadingState; signed_out hanya membuka sign-in; signed_in tanpa onboarding hanya membuka onboarding; signed_in lengkap membuka (tabs), connections, workout/[id], dan modal why."
+    "summary": "Layout akar Expo Router untuk apps/mobile. Membungkus aplikasi dengan GestureHandlerRootView, SafeAreaProvider, ThemeProvider, SessionProvider, MeasurementUnitProvider, dan CompositionSessionsProvider, lalu merender RootNavigator yang menggerbangi rute berdasarkan status sesi dan status onboarding. Mendaftarkan rute (tabs), connections, workout/[id], composition/measurements, dan modal why."
   },
   "apps/mobile/app/(tabs)/_layout.tsx": {
     "summary": "Layout tab bawah dengan lima tujuan yang memetakan lima pertanyaan produk: index (Home, apa sekarang), plan (apa berikutnya), train (lakukan), progress (apakah membaik), coach (mengapa). Ikon berupa glyph teks tanpa paket ikon; warna dari useTheme."
@@ -532,7 +532,7 @@
     ]
   },
   "apps/mobile/src/lib/session.tsx": {
-    "summary": "SessionProvider dan useSession: status loading, signed_out, atau signed_in, memuat token tersimpan dan memverifikasinya lewat api.me (token usang dibersihkan tanpa layar error), signIn dan signUp menyimpan token dan status onboarding, signOut menghapus token dan seluruh cache agar data kesehatan tidak tersisa, markOnboarded. Hook useQuery generik (data, error, loading, stale bila dari cache, refresh) tanpa library query eksternal."
+    "summary": "State sesi autentikasi dan hook pengambilan data untuk apps/mobile. Mengekspor SessionProvider, useSession, dan useQuery. Menangani signIn, signUp, dan signOut; saat sign-out token, cache respons API, dan preferensi satuan ukur dibersihkan bersama-sama agar data kesehatan serta setelan tidak bertahan di perangkat bersama. useQuery menyediakan status loading, error, dan penanda data basi dari cache."
   },
   "modules/health-kit/package.json": {
     "summary": "Manifest @running/health-kit: bridge HealthKit native iOS dengan config plugin Expo; exports src/index.ts dan ./app.plugin.js; peerDependencies expo dan react-native; script typecheck dan test (passWithNoTests)."
@@ -1092,29 +1092,118 @@
     "summary": "Tipe klien dan data tiruan untuk modul Komposisi Tubuh di apps/mobile, dipakai selama lapisan frontend dibangun sebelum API tersedia. Mendefinisikan CircumferencePoint dan BodyMeasurement sesuai kontrak PRD, konstanta STUB_CIRCUMFERENCE_POINTS berisi tujuh titik ukur beserta petunjuk posisi pita, dan helper findPoint. BodyMeasurement menyimpan valueCm kanonis sekaligus recordedUnit agar nilai lama tetap ditampilkan dalam satuan saat dicatat."
   },
   "apps/mobile/app/composition/measurements.tsx": {
-    "summary": "Layar Expo Router /composition/measurements untuk fitur Catat Lingkar Tubuh. Menyediakan toggle satuan bawaan, pemilih titik ukur, input nilai, dan daftar entri sesi berjalan di atas data tiruan. Inti perilakunya: setiap entri baru terbuka memakai satuan bawaan dari useMeasurementUnit, override per-entri direset setelah simpan, dan nilai tersimpan dikonversi lewat helper @running/core sehingga mengganti satuan bawaan tidak pernah mengubah catatan lama.",
+    "summary": "Layar Expo Router /composition/measurements untuk fitur Catat Lingkar Tubuh di apps/mobile. Menggabungkan toggle satuan bawaan, pemilih titik ukur dengan petunjuk pita, input nilai berdraft per titik, ringkasan sesi, dan riwayat per titik yang bisa dikoreksi. Nilai disimpan ke sesi aktif lewat useCompositionSessions sebagai sentimeter kanonis, sementara satuan yang dibaca atlet ikut dicatat.",
     "sections": [
       {
         "symbol": "MeasurementsScreen",
         "startLine": 55,
-        "endLine": 300,
-        "summary": "Komponen layar utama: menahan render sampai preferensi terbaca, menurunkan entryUnit dari override atau satuan bawaan, memvalidasi input lewat parseLength, menyimpan nilai sebagai sentimeter kanonis, lalu mengosongkan override agar entri berikutnya kembali ke satuan bawaan."
-      },
-      {
-        "symbol": "UnitToggle",
-        "startLine": 305,
-        "endLine": 365,
-        "summary": "Segmented control dua opsi cm/inci dengan peran aksesibilitas radiogroup dan label deskriptif, dipakai untuk satuan bawaan maupun satuan satu entri."
-      },
-      {
-        "symbol": "EntryRow",
-        "startLine": 367,
-        "endLine": 420,
-        "summary": "Baris satu pengukuran tersimpan: menampilkan nilai dalam satuan bawaan saat ini dan mencantumkan satuan asli bila keduanya berbeda."
+        "endLine": 360,
+        "summary": "Komponen layar utama: menurunkan nilai dan satuan dari draft titik ukur aktif, memvalidasi lewat parseLength, menyimpan ke sesi aktif, lalu membersihkan draft titik tersebut agar entri berikutnya kembali ke satuan bawaan."
       }
     ]
   },
   "apps/mobile/src/lib/measurement-units.test.ts": {
     "summary": "Uji Vitest untuk lapisan penyimpanan preferensi satuan ukur di apps/mobile dengan AsyncStorage dimock. Memastikan bawaan cm untuk atlet baru, satuan yang disimpan terbaca kembali untuk entri berikutnya, preferensi bertahan setelah modul di-reset (simulasi restart aplikasi), nilai tersimpan yang tidak dikenal dan kegagalan penyimpanan jatuh ke cm, serta clearDefaultUnit mengembalikan keadaan ke cm saat sign-out."
+  },
+  "apps/mobile/src/lib/measurement-draft.ts": {
+    "summary": "Menyimpan entri lingkar tubuh yang sedang diketik per titik ukur untuk apps/mobile, agar berpindah titik tidak menghilangkan nilai dan tidak membawa angka ke titik yang salah. Mengekspor tipe MeasurementDraft dan DraftsByPoint serta fungsi murni readDraft, writeDraft, clearDraft, isDraftEmpty, dan startedPointIds. Satuan ikut tersimpan di tiap draft sehingga angka yang diketik dalam inci tidak dibaca ulang sebagai sentimeter.",
+    "sections": [
+      {
+        "symbol": "writeDraft",
+        "startLine": 50,
+        "endLine": 66,
+        "summary": "Menggabungkan patch ke draft satu titik ukur; draft yang menjadi kosong dihapus dari map alih-alih disimpan sebagai nilai kosong."
+      },
+      {
+        "symbol": "clearDraft",
+        "startLine": 68,
+        "endLine": 76,
+        "summary": "Menghapus draft satu titik tanpa menyentuh titik lain; mengembalikan map yang sama bila titiknya memang belum pernah diisi."
+      }
+    ]
+  },
+  "apps/mobile/src/lib/measurement-draft.test.ts": {
+    "summary": "Uji Vitest untuk draft pengukuran per titik ukur di apps/mobile. Memastikan nilai bertahan saat berpindah titik dan kembali, titik yang belum disentuh tetap kosong, satuan ikut bersama draft, patch digabung bukan menimpa, draft kosong dibuang, clearDraft hanya mengenai satu titik, dan fungsi-fungsinya tidak pernah memutasi map masukan."
+  },
+  "apps/mobile/src/lib/composition-session.ts": {
+    "summary": "Model murni sesi komposisi tubuh untuk apps/mobile beserta aturan pengisiannya. Mengekspor BodyCompositionSession, createSession, addMeasurement, amendMeasurement, removeMeasurement, measurementForPoint, measuredPointIds, isSessionEmpty, dan summariseSession. Aturan utamanya: satu sesi memuat paling banyak satu nilai per titik ukur, sehingga pengukuran ulang mengganti nilai sebelumnya, dan koreksi nilai tidak pernah mengubah capturedAt.",
+    "sections": [
+      {
+        "symbol": "addMeasurement",
+        "startLine": 36,
+        "endLine": 52,
+        "summary": "Menambahkan pengukuran ke depan daftar sambil membuang nilai lama untuk titik ukur yang sama, sehingga sesi hanya menyimpan nilai terakhir per titik."
+      },
+      {
+        "symbol": "amendMeasurement",
+        "startLine": 54,
+        "endLine": 85,
+        "summary": "Mengoreksi nilai dan satuan sebuah pengukuran dengan mempertahankan id dan capturedAt; titik yang belum punya pengukuran dibiarkan apa adanya."
+      },
+      {
+        "symbol": "summariseSession",
+        "startLine": 120,
+        "endLine": 175,
+        "summary": "Membangun ringkasan sesi berisi satu baris per titik ukur dalam urutan sortOrder, lengkap dengan measuredCount, totalPoints, dan isComplete; titik yang belum diukur tetap muncul sebagai baris kosong."
+      }
+    ]
+  },
+  "apps/mobile/src/lib/composition-session.test.ts": {
+    "summary": "Uji Vitest untuk model sesi komposisi tubuh di apps/mobile. Mencakup sesi baru yang kosong dan berstempel waktu mulai, pengukuran tersimpan terbaru-dulu, pengukuran ulang mengganti bukan menambah, koreksi nilai mempertahankan id dan capturedAt, penghapusan satu titik tidak mengganggu titik lain dan membuat sesi kosong bila itu satu-satunya, serta ringkasan sesi yang menampilkan titik belum terukur sebagai celah."
+  },
+  "apps/mobile/src/lib/composition-session-store.tsx": {
+    "summary": "Context React yang menyimpan seluruh sesi komposisi tubuh di apps/mobile: sesi aktif yang sedang direkam plus sesi riwayat yang di-seed dari data tiruan. Mengekspor CompositionSessionsProvider dan hook useCompositionSessions dengan aksi record, amend, remove, discard, dan reset. Sesi aktif dimulai secara lazy pada rekaman pertama, dan penghapusan pengukuran terakhir mengembalikannya ke keadaan belum dimulai.",
+    "sections": [
+      {
+        "symbol": "amend",
+        "startLine": 96,
+        "endLine": 125,
+        "summary": "Mengoreksi nilai pada sesi mana pun berdasarkan sessionId, sehingga koreksi sesi riwayat tidak pernah tertulis ke sesi aktif."
+      },
+      {
+        "symbol": "remove",
+        "startLine": 127,
+        "endLine": 155,
+        "summary": "Menghapus nilai satu titik dari sesi aktif atau sesi riwayat; sesi aktif yang menjadi kosong dikembalikan ke undefined sedangkan sesi riwayat tetap dipertahankan."
+      }
+    ]
+  },
+  "apps/mobile/src/lib/composition-history.ts": {
+    "summary": "Menyusun riwayat satu titik ukur dari kumpulan sesi komposisi tubuh di apps/mobile. Mengekspor tipe MetricHistoryEntry serta fungsi murni historyForPoint dan latestForPoint. Hasilnya terurut terbaru-dulu dan tiap entri membawa changeCm terhadap sesi lebih lama berikutnya; sesi yang tidak mengukur titik tersebut dilewati, dan entri tertua sengaja tanpa changeCm agar berbeda dari perubahan nol."
+  },
+  "apps/mobile/src/lib/composition-history-stub.ts": {
+    "summary": "Data tiruan sesi komposisi tubuh masa lalu untuk apps/mobile, berdiri sebagai pengganti endpoint riwayat selama lapisan frontend dibangun. Mengekspor STUB_SESSION_HISTORY berisi empat sesi selama tiga bulan dengan lingkar pinggang menurun, satu sesi yang diukur memakai pita inci, dan satu sesi yang melewatkan titik paha agar kasus tersebut ikut terlihat di UI."
+  },
+  "apps/mobile/src/lib/composition-history.test.ts": {
+    "summary": "Uji Vitest untuk riwayat per titik ukur di apps/mobile. Memastikan urutan terbaru-dulu terlepas dari urutan masukan, changeCm dihitung terhadap sesi lebih lama berikutnya, entri tertua tanpa changeCm dibedakan dari perubahan nol, sesi yang melewatkan titik dilompati beserta selisihnya, perubahan tetap benar melintasi pergantian satuan, dan data tiruan STUB_SESSION_HISTORY memenuhi bentuk yang dipakai UI."
+  },
+  "apps/mobile/src/components/composition.tsx": {
+    "summary": "Komponen tampilan khusus domain komposisi tubuh untuk apps/mobile. Mengekspor SessionSummaryCard (satu baris per titik ukur termasuk yang belum terukur, dengan hitungan cakupan dan bar progres), MetricHistoryCard (riwayat satu titik dengan selisih antar sesi serta koreksi dan penghapusan nilai di tempat), dan UnitToggle (segmented control cm/inci). Arah perubahan ditampilkan tanpa penilaian baik/buruk karena aplikasi tidak tahu target atlet.",
+    "sections": [
+      {
+        "symbol": "SessionSummaryCard",
+        "startLine": 24,
+        "endLine": 105,
+        "summary": "Kartu ringkasan sesi: menampilkan jumlah titik terukur dari total, waktu mulai sesi, bar cakupan yang disembunyikan dari screen reader, dan satu baris per titik ukur."
+      },
+      {
+        "symbol": "MetricHistoryCard",
+        "startLine": 215,
+        "endLine": 265,
+        "summary": "Daftar riwayat satu titik ukur; tiap baris menyatakan selisih terhadap sesi sebelumnya dan dapat dibuka menjadi editor koreksi."
+      },
+      {
+        "symbol": "CorrectionEditor",
+        "startLine": 330,
+        "endLine": 470,
+        "summary": "Editor inline untuk mengoreksi atau menghapus nilai: terbuka pada angka dan satuan asli, menolak menulis ulang bila tidak ada perubahan, dan meminta konfirmasi Alert sebelum menghapus."
+      },
+      {
+        "symbol": "UnitToggle",
+        "startLine": 475,
+        "endLine": 540,
+        "summary": "Segmented control dua opsi cm/inci dengan peran aksesibilitas radiogroup, dipakai oleh form entri dan editor koreksi."
+      }
+    ]
   }
 }

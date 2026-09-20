@@ -1,6 +1,6 @@
 {
   "repo": "trevynfabian-bit/Running-Apps",
-  "generatedForCommit": "b29447f6f3d6caba64aab4b3a74cd6704d9c8443",
+  "generatedForCommit": "6d104b1cfb4ec80977e2ad7439b696404c605c00",
   "files": [
     {
       "path": ".claude/skills/ngodingpakeai/SKILL.md",
@@ -10,7 +10,7 @@
     },
     {
       "path": ".gitignore",
-      "reason": "changed",
+      "reason": "needs_summary",
       "language": null,
       "size": 680
     },
@@ -232,7 +232,7 @@
     },
     {
       "path": "apps/mobile/app/(tabs)/progress.tsx",
-      "reason": "changed",
+      "reason": "needs_summary",
       "language": "typescript",
       "size": 11499
     },
@@ -246,13 +246,13 @@
       "path": "apps/mobile/app/_layout.tsx",
       "reason": "changed",
       "language": "typescript",
-      "size": 2730
+      "size": 2907
     },
     {
       "path": "apps/mobile/app/composition/measurements.tsx",
-      "reason": "new",
+      "reason": "changed",
       "language": "typescript",
-      "size": 12986
+      "size": 13301
     },
     {
       "path": "apps/mobile/app/connections.tsx",
@@ -309,6 +309,12 @@
       "size": 7202
     },
     {
+      "path": "apps/mobile/src/components/composition.tsx",
+      "reason": "new",
+      "language": "typescript",
+      "size": 18994
+    },
+    {
       "path": "apps/mobile/src/components/metrics.tsx",
       "reason": "needs_summary",
       "language": "typescript",
@@ -334,25 +340,73 @@
     },
     {
       "path": "apps/mobile/src/lib/body-composition.ts",
-      "reason": "new",
+      "reason": "needs_summary",
       "language": "typescript",
       "size": 2989
     },
     {
-      "path": "apps/mobile/src/lib/measurement-units.test.ts",
+      "path": "apps/mobile/src/lib/composition-history-stub.ts",
       "reason": "new",
+      "language": "typescript",
+      "size": 4105
+    },
+    {
+      "path": "apps/mobile/src/lib/composition-history.test.ts",
+      "reason": "new",
+      "language": "typescript",
+      "size": 4998
+    },
+    {
+      "path": "apps/mobile/src/lib/composition-history.ts",
+      "reason": "new",
+      "language": "typescript",
+      "size": 3293
+    },
+    {
+      "path": "apps/mobile/src/lib/composition-session-store.tsx",
+      "reason": "new",
+      "language": "typescript",
+      "size": 7191
+    },
+    {
+      "path": "apps/mobile/src/lib/composition-session.test.ts",
+      "reason": "new",
+      "language": "typescript",
+      "size": 11061
+    },
+    {
+      "path": "apps/mobile/src/lib/composition-session.ts",
+      "reason": "new",
+      "language": "typescript",
+      "size": 6405
+    },
+    {
+      "path": "apps/mobile/src/lib/measurement-draft.test.ts",
+      "reason": "new",
+      "language": "typescript",
+      "size": 4007
+    },
+    {
+      "path": "apps/mobile/src/lib/measurement-draft.ts",
+      "reason": "new",
+      "language": "typescript",
+      "size": 2934
+    },
+    {
+      "path": "apps/mobile/src/lib/measurement-units.test.ts",
+      "reason": "needs_summary",
       "language": "typescript",
       "size": 2881
     },
     {
       "path": "apps/mobile/src/lib/measurement-units.tsx",
-      "reason": "new",
+      "reason": "needs_summary",
       "language": "typescript",
       "size": 4508
     },
     {
       "path": "apps/mobile/src/lib/session.tsx",
-      "reason": "changed",
+      "reason": "needs_summary",
       "language": "typescript",
       "size": 4721
     },
@@ -610,7 +664,7 @@
     },
     {
       "path": "packages/core/src/index.ts",
-      "reason": "changed",
+      "reason": "needs_summary",
       "language": "typescript",
       "size": 1391
     },
@@ -618,13 +672,13 @@
       "path": "packages/core/src/units/index.test.ts",
       "reason": "changed",
       "language": "typescript",
-      "size": 4932
+      "size": 5868
     },
     {
       "path": "packages/core/src/units/index.ts",
       "reason": "changed",
       "language": "typescript",
-      "size": 8259
+      "size": 9477
     },
     {
       "path": "packages/core/src/util/stats.ts",
