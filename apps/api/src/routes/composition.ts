@@ -14,19 +14,27 @@
  */
 
 import { Hono } from 'hono';
-import { desc, eq, inArray } from 'drizzle-orm';
+import { asc, desc, eq, inArray } from 'drizzle-orm';
 
 import {
   PHOTO_SIDES,
   createCompositionSessionSchema,
+  type CompositionMeasurementDto,
   type CompositionPhotoDto,
   type CompositionSessionDto,
+  type LengthUnitDto,
   type PhotoSideDto,
 } from '@running/contracts';
 import { toLocalDate } from '@running/core';
 
 import { getDb } from '../db/client.js';
-import { athleteProfiles, bodyCompositionSessions, compositionPhotos } from '../db/schema.js';
+import {
+  athleteProfiles,
+  bodyCompositionSessions,
+  circumferencePoints,
+  compositionMeasurements,
+  compositionPhotos,
+} from '../db/schema.js';
 import { badRequest } from '../errors.js';
 import { logger } from '../observability/logger.js';
 import {
@@ -64,6 +72,27 @@ interface PhotoRow {
   capturedAt: Date;
 }
 
+interface MeasurementRow {
+  id: string;
+  sessionId: string;
+  pointId: string;
+  pointCode: string;
+  valueCm: number;
+  recordedUnit: string;
+  capturedAt: Date;
+}
+
+function toMeasurementDto(measurement: MeasurementRow): CompositionMeasurementDto {
+  return {
+    id: measurement.id,
+    pointId: measurement.pointId,
+    pointCode: measurement.pointCode,
+    valueCm: measurement.valueCm,
+    recordedUnit: measurement.recordedUnit as LengthUnitDto,
+    capturedAt: measurement.capturedAt.toISOString(),
+  };
+}
+
 function toPhotoDto(photo: PhotoRow): CompositionPhotoDto {
   return {
     id: photo.id,
@@ -83,7 +112,11 @@ function toPhotoDto(photo: PhotoRow): CompositionPhotoDto {
  * time — including for a session where one side was retaken and its row is
  * newer than the rest.
  */
-function toSessionDto(session: SessionRow, photos: readonly PhotoRow[]): CompositionSessionDto {
+function toSessionDto(
+  session: SessionRow,
+  photos: readonly PhotoRow[],
+  measurements: readonly MeasurementRow[] = [],
+): CompositionSessionDto {
   return {
     id: session.id,
     capturedAt: session.capturedAt.toISOString(),
@@ -92,6 +125,7 @@ function toSessionDto(session: SessionRow, photos: readonly PhotoRow[]): Composi
     photos: [...photos]
       .sort((a, b) => (SIDE_ORDER.get(a.side) ?? 99) - (SIDE_ORDER.get(b.side) ?? 99))
       .map(toPhotoDto),
+    measurements: measurements.map(toMeasurementDto),
   };
 }
 
@@ -268,14 +302,51 @@ compositionRoutes.get('/sessions', async (c) => {
       ),
     );
 
-  const bySession = new Map<string, PhotoRow[]>();
+  // Joined so each measurement carries its point's code; the client keys on
+  // the code, never on a uuid that differs between environments.
+  const measurementRows = await db
+    .select({
+      id: compositionMeasurements.id,
+      sessionId: compositionMeasurements.sessionId,
+      pointId: compositionMeasurements.pointId,
+      pointCode: circumferencePoints.code,
+      sortOrder: circumferencePoints.sortOrder,
+      valueCm: compositionMeasurements.valueCm,
+      recordedUnit: compositionMeasurements.recordedUnit,
+      capturedAt: compositionMeasurements.capturedAt,
+    })
+    .from(compositionMeasurements)
+    .innerJoin(circumferencePoints, eq(compositionMeasurements.pointId, circumferencePoints.id))
+    .where(
+      inArray(
+        compositionMeasurements.sessionId,
+        sessions.map((session) => session.id),
+      ),
+    )
+    // Anatomical order, so the app lists a session the same way every time.
+    .orderBy(asc(circumferencePoints.sortOrder));
+
+  const photosBySession = new Map<string, PhotoRow[]>();
   for (const photo of photos) {
-    const list = bySession.get(photo.sessionId) ?? [];
+    const list = photosBySession.get(photo.sessionId) ?? [];
     list.push(photo);
-    bySession.set(photo.sessionId, list);
+    photosBySession.set(photo.sessionId, list);
+  }
+
+  const measurementsBySession = new Map<string, MeasurementRow[]>();
+  for (const measurement of measurementRows) {
+    const list = measurementsBySession.get(measurement.sessionId) ?? [];
+    list.push(measurement);
+    measurementsBySession.set(measurement.sessionId, list);
   }
 
   return c.json({
-    sessions: sessions.map((session) => toSessionDto(session, bySession.get(session.id) ?? [])),
+    sessions: sessions.map((session) =>
+      toSessionDto(
+        session,
+        photosBySession.get(session.id) ?? [],
+        measurementsBySession.get(session.id) ?? [],
+      ),
+    ),
   });
 });

@@ -796,12 +796,139 @@ export const compositionPhotoSchema = z.object({
 });
 export type CompositionPhotoDto = z.infer<typeof compositionPhotoSchema>;
 
+/**
+ * Unit a circumference was read in.
+ *
+ * Distinct from the metric/imperial preference used for running distance: an
+ * athlete can reasonably want kilometres for their long run and inches round
+ * their waist, so the two never share a value.
+ */
+export const lengthUnitSchema = z.enum(['cm', 'in']);
+export type LengthUnitDto = z.infer<typeof lengthUnitSchema>;
+
+/**
+ * Plausible range for a human circumference, per unit.
+ *
+ * Wide on purpose — this is a typo guard, not a judgement about bodies. It
+ * catches a decimal point in the wrong place (864 instead of 86.4) and a value
+ * entered in the wrong unit, and nothing else. Expressed per unit rather than
+ * by converting, because this package deliberately depends on nothing but Zod.
+ */
+export const CIRCUMFERENCE_BOUNDS = {
+  cm: { min: 5, max: 300 },
+  in: { min: 2, max: 118 },
+} as const;
+
+export const circumferencePointSchema = z.object({
+  id: z.string(),
+  /** Stable identifier the client keys on, e.g. `waist`. */
+  code: z.string(),
+  label: z.string(),
+  /** Where to put the tape. Shown next to the input, not behind a tooltip. */
+  guideText: z.string(),
+  sortOrder: z.number().int(),
+});
+export type CircumferencePointDto = z.infer<typeof circumferencePointSchema>;
+
+export const compositionMeasurementSchema = z.object({
+  id: z.string(),
+  pointId: z.string(),
+  pointCode: z.string(),
+  /** Canonical centimetres. Always comparable, whatever it was typed in. */
+  valueCm: z.number(),
+  /** What the athlete actually read off the tape. */
+  recordedUnit: lengthUnitSchema,
+  capturedAt: isoDateTime,
+});
+export type CompositionMeasurementDto = z.infer<typeof compositionMeasurementSchema>;
+
+/**
+ * Record or correct one circumference.
+ *
+ * The wire carries `value` and `unit` — what the athlete actually entered —
+ * rather than a pre-converted centimetre figure. That keeps the auditable fact
+ * on the wire, puts the conversion in exactly one place, and means a client
+ * that converts wrongly cannot write a corrupted canonical value.
+ *
+ * `capturedAt` defaults to the session's own capture time server-side. A
+ * correction made months later must not restamp the measurement with the time
+ * of the correction.
+ */
+export const recordMeasurementSchema = z
+  .object({
+    /** The measure point's stable code, e.g. `waist`. */
+    pointCode: z.string().min(1).max(64),
+    value: z.number().positive().finite(),
+    unit: lengthUnitSchema.default('cm'),
+    capturedAt: isoDateTime.optional(),
+  })
+  .superRefine((data, ctx) => {
+    const bounds = CIRCUMFERENCE_BOUNDS[data.unit];
+    if (data.value < bounds.min || data.value > bounds.max) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['value'],
+        message: `Expected a measurement between ${bounds.min} and ${bounds.max} ${data.unit}.`,
+      });
+    }
+  });
+export type RecordMeasurementDto = z.infer<typeof recordMeasurementSchema>;
+
+/**
+ * Record several circumferences at once, as saving a session does.
+ *
+ * Each point may appear once. A payload naming the waist twice has no correct
+ * interpretation, and silently keeping the last one would hide a client bug
+ * behind plausible-looking data.
+ */
+export const recordMeasurementsSchema = z
+  .object({ measurements: z.array(recordMeasurementSchema).min(1).max(50) })
+  .superRefine((data, ctx) => {
+    const seen = new Set<string>();
+    data.measurements.forEach((measurement, index) => {
+      if (seen.has(measurement.pointCode)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['measurements', index, 'pointCode'],
+          message: `Measure point "${measurement.pointCode}" appears more than once.`,
+        });
+      }
+      seen.add(measurement.pointCode);
+    });
+  });
+export type RecordMeasurementsDto = z.infer<typeof recordMeasurementsSchema>;
+
+/**
+ * One entry in a measure point's history.
+ *
+ * `changeCm` is the difference from the next-older session that measured the
+ * same point, computed in centimetres so it is the same number regardless of
+ * how either session was typed in. Absent on the oldest entry — which is not
+ * the same as a change of zero, and the two must stay distinguishable.
+ */
+export const metricHistoryEntrySchema = z.object({
+  sessionId: z.string(),
+  capturedAt: isoDateTime,
+  localDate: localDate,
+  valueCm: z.number(),
+  recordedUnit: lengthUnitSchema,
+  changeCm: z.number().optional(),
+});
+export type MetricHistoryEntryDto = z.infer<typeof metricHistoryEntrySchema>;
+
+export const metricHistorySchema = z.object({
+  point: circumferencePointSchema,
+  entries: z.array(metricHistoryEntrySchema),
+});
+export type MetricHistoryDto = z.infer<typeof metricHistorySchema>;
+
 export const compositionSessionSchema = z.object({
   id: z.string(),
   capturedAt: isoDateTime,
   localDate: localDate,
   note: z.string().optional(),
   photos: z.array(compositionPhotoSchema),
+  measurements: z.array(compositionMeasurementSchema),
 });
 export type CompositionSessionDto = z.infer<typeof compositionSessionSchema>;
 
