@@ -211,13 +211,13 @@ describe('POST /api/composition/sessions', () => {
   });
 });
 
-describe('GET /api/composition/sessions', () => {
-  async function list(query = '', auth = token): Promise<Response> {
-    return app.request(`/api/composition/sessions${query}`, {
-      headers: { authorization: `Bearer ${auth}` },
-    });
-  }
+async function list(query = '', auth = token): Promise<Response> {
+  return app.request(`/api/composition/sessions${query}`, {
+    headers: { authorization: `Bearer ${auth}` },
+  });
+}
 
+describe('GET /api/composition/sessions', () => {
   it('returns the athlete sessions newest first', async () => {
     for (const capturedAt of [
       '2026-06-14T07:30:00.000Z',
@@ -287,5 +287,193 @@ describe('GET /api/composition/sessions', () => {
   it('requires a signed-in athlete', async () => {
     const response = await app.request('/api/composition/sessions');
     expect(response.status).toBe(401);
+  });
+});
+
+describe('POST /api/composition/sessions/:id/measurements', () => {
+  async function newSession(): Promise<string> {
+    const body = (await (await post(sessionForm())).json()) as { id: string };
+    return body.id;
+  }
+
+  async function record(
+    sessionId: string,
+    measurements: unknown[],
+    auth = token,
+  ): Promise<Response> {
+    return app.request(`/api/composition/sessions/${sessionId}/measurements`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${auth}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ measurements }),
+    });
+  }
+
+  it('converts what the athlete typed into canonical centimetres', async () => {
+    const sessionId = await newSession();
+
+    const response = await record(sessionId, [{ pointCode: 'waist', value: 34, unit: 'in' }]);
+    expect(response.status).toBe(200);
+
+    const body = (await response.json()) as {
+      measurements: { pointCode: string; valueCm: number; recordedUnit: string }[];
+    };
+
+    // 34 in is exactly 86.36 cm, and what they read is kept alongside it.
+    expect(body.measurements[0]?.valueCm).toBeCloseTo(86.36, 10);
+    expect(body.measurements[0]?.recordedUnit).toBe('in');
+    expect(body.measurements[0]?.pointCode).toBe('waist');
+  });
+
+  it('defaults to centimetres', async () => {
+    const sessionId = await newSession();
+    const body = (await (
+      await record(sessionId, [{ pointCode: 'waist', value: 86.4 }])
+    ).json()) as { measurements: { valueCm: number; recordedUnit: string }[] };
+
+    expect(body.measurements[0]?.valueCm).toBeCloseTo(86.4, 10);
+    expect(body.measurements[0]?.recordedUnit).toBe('cm');
+  });
+
+  it('records a whole set in anatomical order', async () => {
+    const sessionId = await newSession();
+
+    const body = (await (
+      await record(sessionId, [
+        { pointCode: 'thigh', value: 55.1 },
+        { pointCode: 'neck', value: 38 },
+        { pointCode: 'waist', value: 86.4 },
+      ])
+    ).json()) as { measurements: { pointCode: string }[] };
+
+    // Not the order they were sent: the app lists a session the same way
+    // every time.
+    expect(body.measurements.map((m) => m.pointCode)).toEqual(['neck', 'waist', 'thigh']);
+  });
+
+  it('replaces rather than duplicates when a point is measured again', async () => {
+    const sessionId = await newSession();
+
+    await record(sessionId, [{ pointCode: 'waist', value: 86.4 }]);
+    const body = (await (
+      await record(sessionId, [{ pointCode: 'waist', value: 85.1 }])
+    ).json()) as { measurements: { pointCode: string; valueCm: number }[] };
+
+    // One waist, and it is the one taken last.
+    expect(body.measurements.filter((m) => m.pointCode === 'waist')).toHaveLength(1);
+    expect(body.measurements[0]?.valueCm).toBeCloseTo(85.1, 10);
+  });
+
+  it('stamps a measurement with the session capture time, not now', async () => {
+    const capturedAt = '2026-08-09T07:00:00.000Z';
+    const created = (await (
+      await post(sessionForm({}, { capturedAt, localDate: '2026-08-09' }))
+    ).json()) as { id: string };
+
+    const body = (await (
+      await record(created.id, [{ pointCode: 'waist', value: 86.4 }])
+    ).json()) as { measurements: { capturedAt: string }[] };
+
+    // A correction months later must not relocate the reading.
+    expect(body.measurements[0]?.capturedAt).toBe(capturedAt);
+  });
+
+  it('rejects a measurement outside the plausible range', async () => {
+    const sessionId = await newSession();
+
+    // A decimal point in the wrong place.
+    const response = await record(sessionId, [{ pointCode: 'waist', value: 864 }]);
+    expect(response.status).toBe(400);
+
+    const after = (await (
+      await record(sessionId, [{ pointCode: 'waist', value: 86.4 }])
+    ).json()) as {
+      measurements: unknown[];
+    };
+    expect(after.measurements).toHaveLength(1);
+  });
+
+  it('names an unknown measure point instead of dropping it', async () => {
+    const sessionId = await newSession();
+
+    const response = await record(sessionId, [{ pointCode: 'left_earlobe', value: 6 }]);
+    expect(response.status).toBe(400);
+
+    const body = (await response.json()) as { error: { details?: { unknown?: string[] } } };
+    expect(body.error.details?.unknown).toEqual(['left_earlobe']);
+  });
+
+  it('refuses the same point twice in one payload', async () => {
+    const sessionId = await newSession();
+
+    const response = await record(sessionId, [
+      { pointCode: 'waist', value: 86.4 },
+      { pointCode: 'waist', value: 85.1 },
+    ]);
+
+    expect(response.status).toBe(400);
+  });
+
+  it('writes nothing when any measurement in the set is invalid', async () => {
+    const sessionId = await newSession();
+
+    await record(sessionId, [
+      { pointCode: 'waist', value: 86.4 },
+      { pointCode: 'chest', value: 9999 },
+    ]);
+
+    const listed = (await (await list()).json()) as {
+      sessions: { id: string; measurements: unknown[] }[];
+    };
+    const session = listed.sessions.find((s) => s.id === sessionId);
+
+    // The payload is rejected whole; the valid half is not quietly kept.
+    expect(session?.measurements).toEqual([]);
+  });
+
+  it('reports another athlete session as not found, never as forbidden', async () => {
+    const mine = await newSession();
+
+    const signUp = await app.request('/api/auth/signup', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: 'intruder@example.test',
+        password: 'a-long-enough-password',
+        displayName: 'Intruder',
+      }),
+    });
+    const intruder = ((await signUp.json()) as { token: string }).token;
+
+    const response = await record(mine, [{ pointCode: 'waist', value: 86.4 }], intruder);
+
+    // 403 would confirm the id is real and turn a list of uuids into a probe.
+    expect(response.status).toBe(404);
+  });
+
+  it('requires a signed-in athlete', async () => {
+    const sessionId = await newSession();
+
+    const response = await app.request(`/api/composition/sessions/${sessionId}/measurements`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ measurements: [{ pointCode: 'waist', value: 86.4 }] }),
+    });
+
+    expect(response.status).toBe(401);
+  });
+
+  it('surfaces the measurements on the session listing', async () => {
+    const sessionId = await newSession();
+    await record(sessionId, [
+      { pointCode: 'waist', value: 86.4 },
+      { pointCode: 'chest', value: 99.2 },
+    ]);
+
+    const listed = (await (await list()).json()) as {
+      sessions: { id: string; measurements: { pointCode: string }[] }[];
+    };
+    const session = listed.sessions.find((s) => s.id === sessionId);
+
+    expect(session?.measurements.map((m) => m.pointCode)).toEqual(['chest', 'waist']);
   });
 });

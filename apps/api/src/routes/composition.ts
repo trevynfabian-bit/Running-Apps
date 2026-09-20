@@ -14,17 +14,19 @@
  */
 
 import { Hono } from 'hono';
-import { asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 
 import {
   PHOTO_SIDES,
   createCompositionSessionSchema,
+  recordMeasurementsSchema,
   type CompositionMeasurementDto,
   type CompositionPhotoDto,
   type CompositionSessionDto,
   type LengthUnitDto,
   type PhotoSideDto,
 } from '@running/contracts';
+import { toCanonicalLength, type LengthUnit } from '@running/core';
 import { toLocalDate } from '@running/core';
 
 import { getDb } from '../db/client.js';
@@ -35,7 +37,7 @@ import {
   compositionMeasurements,
   compositionPhotos,
 } from '../db/schema.js';
-import { badRequest } from '../errors.js';
+import { badRequest, notFound } from '../errors.js';
 import { logger } from '../observability/logger.js';
 import {
   photoStorage,
@@ -350,3 +352,127 @@ compositionRoutes.get('/sessions', async (c) => {
     ),
   });
 });
+
+// ---------------------------------------------------------------------------
+// Measurements
+// ---------------------------------------------------------------------------
+
+/**
+ * Find a session the caller owns.
+ *
+ * Ownership lives in the same query as the lookup. A session that belongs to
+ * someone else is reported as not found, never as forbidden: telling an athlete
+ * "that exists but is not yours" turns a list of uuids into a way to discover
+ * which ones are real.
+ */
+async function ownedSession(
+  db: Awaited<ReturnType<typeof getDb>>['db'],
+  athleteId: string,
+  sessionId: string,
+): Promise<SessionRow> {
+  const [session] = await db
+    .select()
+    .from(bodyCompositionSessions)
+    .where(
+      and(
+        eq(bodyCompositionSessions.id, sessionId),
+        eq(bodyCompositionSessions.athleteId, athleteId),
+      ),
+    )
+    .limit(1);
+
+  if (!session) throw notFound('Session');
+  return session;
+}
+
+/**
+ * Record circumferences into a session, replacing any already there.
+ *
+ * The request carries what the athlete typed — a value and the unit they read
+ * it in — and the conversion to canonical centimetres happens here, once. A
+ * client that converts wrongly therefore cannot write a corrupted canonical
+ * value, and `recordedUnit` keeps what they actually read so the app can show
+ * it back to them unchanged.
+ *
+ * Writing is an upsert on (session, point): re-measuring after the tape slipped
+ * replaces the earlier number rather than leaving the session holding two
+ * answers to one question. That is the same rule the unique index enforces, so
+ * the endpoint cannot drift from the database.
+ */
+compositionRoutes.post('/sessions/:sessionId/measurements', async (c) => {
+  const athleteId = c.get('athleteId');
+  const sessionId = c.req.param('sessionId');
+
+  const parsed = recordMeasurementsSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) {
+    throw badRequest(
+      parsed.error.issues[0]?.message ?? 'Some of those measurements were not valid.',
+      { issues: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`) },
+    );
+  }
+
+  const { db } = await getDb();
+  const session = await ownedSession(db, athleteId, sessionId);
+
+  // Resolve codes to ids in one query. An unknown code is the athlete's client
+  // being out of date, so it is named rather than silently dropped.
+  const codes = parsed.data.measurements.map((measurement) => measurement.pointCode);
+  const points = await db
+    .select()
+    .from(circumferencePoints)
+    .where(inArray(circumferencePoints.code, codes));
+
+  const byCode = new Map(points.map((point) => [point.code, point]));
+  const unknown = codes.filter((code) => !byCode.has(code));
+  if (unknown.length > 0) {
+    throw badRequest(`Unknown measure point: ${unknown.join(', ')}.`, { unknown });
+  }
+
+  const values = parsed.data.measurements.map((measurement) => ({
+    sessionId,
+    pointId: byCode.get(measurement.pointCode)!.id,
+    valueCm: toCanonicalLength(measurement.value, measurement.unit as LengthUnit),
+    recordedUnit: measurement.unit,
+    // Defaults to the session's own capture time, not now: a correction made
+    // months later must not restamp the reading with the time of the fix.
+    capturedAt: measurement.capturedAt ? new Date(measurement.capturedAt) : session.capturedAt,
+  }));
+
+  await db
+    .insert(compositionMeasurements)
+    .values(values)
+    .onConflictDoUpdate({
+      target: [compositionMeasurements.sessionId, compositionMeasurements.pointId],
+      set: {
+        valueCm: sql`excluded.value_cm`,
+        recordedUnit: sql`excluded.recorded_unit`,
+        capturedAt: sql`excluded.captured_at`,
+        updatedAt: new Date(),
+      },
+    });
+
+  return c.json({ measurements: await sessionMeasurements(db, sessionId) });
+});
+
+/** Every measurement in one session, in anatomical order, with point codes. */
+async function sessionMeasurements(
+  db: Awaited<ReturnType<typeof getDb>>['db'],
+  sessionId: string,
+): Promise<CompositionMeasurementDto[]> {
+  const rows = await db
+    .select({
+      id: compositionMeasurements.id,
+      sessionId: compositionMeasurements.sessionId,
+      pointId: compositionMeasurements.pointId,
+      pointCode: circumferencePoints.code,
+      valueCm: compositionMeasurements.valueCm,
+      recordedUnit: compositionMeasurements.recordedUnit,
+      capturedAt: compositionMeasurements.capturedAt,
+    })
+    .from(compositionMeasurements)
+    .innerJoin(circumferencePoints, eq(compositionMeasurements.pointId, circumferencePoints.id))
+    .where(eq(compositionMeasurements.sessionId, sessionId))
+    .orderBy(asc(circumferencePoints.sortOrder));
+
+  return rows.map(toMeasurementDto);
+}
