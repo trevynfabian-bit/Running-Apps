@@ -24,7 +24,6 @@ import {
   CONFIDENCE_LABELS,
   METHOD_DESCRIPTIONS,
   METHOD_LABELS,
-  NON_MEDICAL_NOTE,
   STUB_ESTIMATES,
   estimateFor,
   formatRange,
@@ -43,7 +42,7 @@ import {
   Stack,
   Type,
 } from '../../src/components/primitives';
-import { BodyFatRange } from '../../src/components/composition';
+import { BodyFatRange, NonMedicalNotice } from '../../src/components/composition';
 
 const METHODS: readonly BodyFatMethod[] = ['formula', 'ai'];
 
@@ -109,16 +108,7 @@ export default function BodyFatScreen(): React.ReactElement {
           </Card>
         </View>
 
-        <Card>
-          <Stack gap={spacing.sm}>
-            <Type variant="bodyStrong" tone="caution">
-              What this number is
-            </Type>
-            <Type variant="body" tone="secondary">
-              {NON_MEDICAL_NOTE}
-            </Type>
-          </Stack>
-        </Card>
+        <NonMedicalNotice />
       </Stack>
     </Screen>
   );

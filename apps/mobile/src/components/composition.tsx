@@ -21,7 +21,15 @@ import {
 
 import type { BodyMeasurement, CircumferencePoint } from '../lib/body-composition';
 import type { MetricHistoryEntry } from '../lib/composition-history';
-import { CONFIDENCE_LABELS, formatRange, rangeWidth, type BodyFatEstimate } from '../lib/body-fat';
+import {
+  BODY_FAT_SCALE,
+  CONFIDENCE_LABELS,
+  NON_MEDICAL_NOTE,
+  bandGeometry,
+  formatRange,
+  rangeWidth,
+  type BodyFatEstimate,
+} from '../lib/body-fat';
 import { summariseSession, type BodyCompositionSession } from '../lib/composition-session';
 import { UNIT_OPTIONS } from '../lib/measurement-units';
 import { radius, spacing } from '../design/tokens';
@@ -629,6 +637,8 @@ export function BodyFatRange({ estimate }: { estimate: BodyFatEstimate }): React
           </Type>
         </Stack>
 
+        <RangeBand low={estimate.valueLow} high={estimate.valueHigh} />
+
         <Stack direction="row" gap={spacing.sm} align="center" style={{ flexWrap: 'wrap' }}>
           <Chip label={CONFIDENCE_LABELS[estimate.confidence]} tone={tone} selected />
           {estimate.serviceStatus && estimate.serviceStatus !== 'active' ? (
@@ -655,6 +665,95 @@ export function BodyFatRange({ estimate }: { estimate: BodyFatEstimate }): React
             {estimate.basis}
           </Type>
         </Stack>
+      </Stack>
+    </Card>
+  );
+}
+
+/**
+ * The estimate drawn as a band on a fixed scale.
+ *
+ * A number in text is read as a number; a segment with visible width is read as
+ * a range. That is the entire purpose of this component — it makes the
+ * uncertainty something the athlete sees rather than something they have to
+ * work out from two figures either side of a dash.
+ *
+ * **The scale carries no zones and no colour coding.** Marking off
+ * "essential / athletic / average / high" is exactly the medical judgement the
+ * notice underneath disclaims, and those thresholds vary by sex, age and the
+ * method used to define them — none of which this estimate knows. A neutral
+ * track with the athlete's own band on it says what is true and nothing more.
+ */
+export function RangeBand({ low, high }: { low: number; high: number }): React.ReactElement | null {
+  const theme = useTheme();
+
+  if (!Number.isFinite(low) || !Number.isFinite(high)) return null;
+
+  const { start, width } = bandGeometry(low, high);
+
+  return (
+    // Hidden from screen readers: the text above already states the range and
+    // the confidence, and a second rendering of the same fact is noise.
+    <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <Stack gap={spacing.xs}>
+        <View
+          style={{
+            height: 10,
+            borderRadius: radius.pill,
+            backgroundColor: theme.color.border,
+            overflow: 'hidden',
+          }}
+        >
+          <View
+            style={{
+              position: 'absolute',
+              left: `${start * 100}%`,
+              width: `${width * 100}%`,
+              height: '100%',
+              borderRadius: radius.pill,
+              backgroundColor: theme.color.accent,
+            }}
+          />
+        </View>
+        <Stack direction="row" justify="space-between">
+          <Type variant="caption" tone="tertiary">
+            {BODY_FAT_SCALE.min}%
+          </Type>
+          <Type variant="caption" tone="tertiary">
+            {BODY_FAT_SCALE.max}%
+          </Type>
+        </Stack>
+      </Stack>
+    </View>
+  );
+}
+
+/**
+ * The non-medical notice.
+ *
+ * A component rather than a paragraph each screen writes for itself, so the
+ * wording cannot drift and cannot quietly soften on the screen where it is
+ * least convenient. Every surface that shows an estimate shows this.
+ *
+ * `compact` is for sitting directly under a result, where the heading would be
+ * a third thing competing for attention; the sentence itself never shortens.
+ */
+export function NonMedicalNotice({ compact = false }: { compact?: boolean }): React.ReactElement {
+  const body = (
+    <Type variant={compact ? 'caption' : 'body'} tone="secondary">
+      {NON_MEDICAL_NOTE}
+    </Type>
+  );
+
+  if (compact) return body;
+
+  return (
+    <Card>
+      <Stack gap={spacing.sm}>
+        <Type variant="bodyStrong" tone="caution" accessibilityRole="header">
+          What this number is
+        </Type>
+        {body}
       </Stack>
     </Card>
   );

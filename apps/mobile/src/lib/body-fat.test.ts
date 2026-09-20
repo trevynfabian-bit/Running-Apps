@@ -6,13 +6,17 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  BODY_FAT_SCALE,
   CONFIDENCE_LABELS,
   METHOD_LABELS,
+  MIN_BAND_FRACTION,
   NON_MEDICAL_NOTE,
   STUB_ESTIMATES,
+  bandGeometry,
   estimateFor,
   formatRange,
   rangeWidth,
+  scalePosition,
 } from './body-fat';
 
 describe('formatRange', () => {
@@ -82,5 +86,73 @@ describe('the disclaimer', () => {
   it('says plainly that this is not a medical measurement', () => {
     expect(NON_MEDICAL_NOTE).toContain('not a medical measurement');
     expect(NON_MEDICAL_NOTE).toContain('trend');
+  });
+});
+
+describe('scalePosition', () => {
+  it('places the ends of the scale at the ends of the track', () => {
+    expect(scalePosition(BODY_FAT_SCALE.min)).toBe(0);
+    expect(scalePosition(BODY_FAT_SCALE.max)).toBe(1);
+  });
+
+  it('places the midpoint halfway', () => {
+    expect(scalePosition((BODY_FAT_SCALE.min + BODY_FAT_SCALE.max) / 2)).toBeCloseTo(0.5, 10);
+  });
+
+  it('pins a reading outside the scale to the edge', () => {
+    // A band running off the end would look like a rendering bug rather than
+    // an unusual measurement.
+    expect(scalePosition(BODY_FAT_SCALE.min - 10)).toBe(0);
+    expect(scalePosition(BODY_FAT_SCALE.max + 10)).toBe(1);
+  });
+
+  it('does not propagate a non-finite value into a layout', () => {
+    expect(scalePosition(Number.NaN)).toBe(0);
+    expect(scalePosition(Number.POSITIVE_INFINITY)).toBe(0);
+  });
+});
+
+describe('bandGeometry', () => {
+  it('starts at the lower bound and spans to the upper', () => {
+    const { start, width } = bandGeometry(BODY_FAT_SCALE.min, BODY_FAT_SCALE.max);
+
+    expect(start).toBe(0);
+    expect(width).toBeCloseTo(1, 10);
+  });
+
+  it('tolerates bounds given the wrong way round', () => {
+    // An estimate is a range whichever order its ends arrive in.
+    expect(bandGeometry(25, 15)).toEqual(bandGeometry(15, 25));
+  });
+
+  it('keeps a zero-width band visible', () => {
+    const { width } = bandGeometry(20, 20);
+
+    // Collapsing to nothing would read as "no estimate" rather than a tight one.
+    expect(width).toBe(MIN_BAND_FRACTION);
+    expect(width).toBeGreaterThan(0);
+  });
+
+  it('never runs the band past the end of the track', () => {
+    for (const [low, high] of [
+      [17.4, 20.2],
+      [4, 60],
+      [44.9, 44.95],
+      [0, 5],
+    ] as const) {
+      const { start, width } = bandGeometry(low, high);
+      expect(start).toBeGreaterThanOrEqual(0);
+      // The minimum width can push a band pinned at the far edge marginally
+      // over; anything beyond that is a real overflow.
+      expect(start + width).toBeLessThanOrEqual(1 + MIN_BAND_FRACTION);
+    }
+  });
+
+  it('draws the stub estimates inside the scale', () => {
+    for (const estimate of STUB_ESTIMATES) {
+      const { start, width } = bandGeometry(estimate.valueLow, estimate.valueHigh);
+      expect(start).toBeGreaterThan(0);
+      expect(start + width).toBeLessThan(1);
+    }
   });
 });

@@ -122,3 +122,46 @@ export function estimateFor(
 ): BodyFatEstimate | undefined {
   return estimates.find((estimate) => estimate.method === method);
 }
+
+// ---------------------------------------------------------------------------
+// Scale
+// ---------------------------------------------------------------------------
+
+/**
+ * Ends of the scale an estimate is drawn against.
+ *
+ * Wide enough to hold any plausible reading without the band sitting at an
+ * edge, and deliberately carrying no zones: marking off "essential", "athletic"
+ * or "high" is the medical judgement the notice disclaims, and those thresholds
+ * vary by sex, age and the method used to define them — none of which this
+ * estimate knows.
+ */
+export const BODY_FAT_SCALE = { min: 5, max: 45 } as const;
+
+/**
+ * Where a value sits on the scale, as a fraction from 0 to 1.
+ *
+ * Clamped, so a reading outside the drawn scale pins to the edge rather than
+ * overflowing the track — a band running off the end would look like a
+ * rendering bug rather than an unusual measurement.
+ */
+export function scalePosition(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  const span = BODY_FAT_SCALE.max - BODY_FAT_SCALE.min;
+  return Math.min(1, Math.max(0, (value - BODY_FAT_SCALE.min) / span));
+}
+
+/** Minimum drawn width, so a band that rounds to nothing is still visible. */
+export const MIN_BAND_FRACTION = 0.012;
+
+/**
+ * Start and width of the drawn band, as fractions of the track.
+ *
+ * Tolerates bounds given the wrong way round: an estimate is a range whichever
+ * order its ends arrive in, and swapping them silently beats drawing nothing.
+ */
+export function bandGeometry(low: number, high: number): { start: number; width: number } {
+  const start = scalePosition(Math.min(low, high));
+  const end = scalePosition(Math.max(low, high));
+  return { start, width: Math.max(end - start, MIN_BAND_FRACTION) };
+}
