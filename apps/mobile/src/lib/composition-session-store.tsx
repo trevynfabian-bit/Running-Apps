@@ -21,7 +21,7 @@
  * stay as the optimistic local copy.
  */
 
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 import type { LengthUnit } from '@running/core';
 
@@ -36,7 +36,8 @@ import {
   type BodyCompositionSession,
 } from './composition-session';
 import { STUB_SESSION_HISTORY } from './composition-history-stub';
-import { clearPhotoEstimateFor } from './photo-estimate-stub';
+import { clearPhotoEstimateCache, clearPhotoEstimateFor } from './photo-estimate-stub';
+import { registerSignOutCleanup } from './sign-out-cleanup';
 
 export interface MeasurementCorrection {
   valueCm: number;
@@ -221,6 +222,28 @@ export function CompositionSessionsProvider({
   const recorded = useCallback(
     (pointId: string) => (active ? measurementForPoint(active, pointId) : undefined),
     [active],
+  );
+
+  /**
+   * Forget everything on sign-out.
+   *
+   * This provider sits below the one that owns sign-out, so it cannot be
+   * reached from there — it registers instead. What it is holding is body
+   * photographs, the measurements taken from them, and the readings derived
+   * from both, on a phone that may be handed to the next person.
+   *
+   * The history is emptied rather than reset to the stubs: those fixtures
+   * stand in for a signed-in athlete's data, and showing them to whoever signs
+   * in next would be showing someone else's sessions.
+   */
+  useEffect(
+    () =>
+      registerSignOutCleanup(() => {
+        setActive(undefined);
+        setHistory([]);
+        clearPhotoEstimateCache();
+      }),
+    [],
   );
 
   const all = useMemo(() => (active ? [active, ...history] : history), [active, history]);
