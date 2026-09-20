@@ -8,11 +8,15 @@ import { describe, expect, it } from 'vitest';
 import { STUB_CIRCUMFERENCE_POINTS } from './body-composition';
 import type { BodyCompositionSession } from './composition-session';
 import {
+  RANGE_PRESETS,
   comparableRows,
   compareSessions,
   daysBetween,
   netChangeForPoint,
   orderSessions,
+  resolveRange,
+  selectSlot,
+  sessionsInRange,
   totalChangeCm,
 } from './composition-compare';
 
@@ -168,5 +172,95 @@ describe('netChangeForPoint', () => {
   it('ignores sessions that did not measure the point', () => {
     // Only June has a thigh value, so there is no direction to report.
     expect(netChangeForPoint([JUNE, SEPTEMBER], THIGH)).toBeUndefined();
+  });
+});
+
+describe('choosing a range', () => {
+  const NOW = new Date('2026-09-20T12:00:00.000Z');
+
+  // 14, 70, 98 and 190 days before NOW respectively.
+  const RECENT = session('recent', '2026-09-06T07:45:00.000Z', { [WAIST]: 85.3 });
+  const SUMMER = session('summer', '2026-07-12T07:15:00.000Z', { [WAIST]: 87.1 });
+  const SPRING = session('spring', '2026-06-14T07:30:00.000Z', { [WAIST]: 88.2 });
+  const WINTER = session('winter', '2026-03-14T07:30:00.000Z', { [WAIST]: 91.0 });
+  const ALL = [SUMMER, WINTER, RECENT, SPRING];
+
+  it('offers no window short enough to show mostly noise', () => {
+    // Composition changes on a scale of months; a two-week window would
+    // invite reading measurement noise as progress.
+    const shortest = Math.min(...RANGE_PRESETS.map((p) => p.days ?? Infinity));
+    expect(shortest).toBeGreaterThanOrEqual(42);
+    expect(RANGE_PRESETS.some((p) => p.days === undefined)).toBe(true);
+  });
+
+  it('returns sessions inside the window, newest first', () => {
+    // 91 days back from NOW reaches 21 June, so spring (14 June) is outside.
+    expect(sessionsInRange(ALL, 91, NOW).map((s) => s.id)).toEqual(['recent', 'summer']);
+    expect(sessionsInRange(ALL, 182, NOW).map((s) => s.id)).toEqual(['recent', 'summer', 'spring']);
+  });
+
+  it('excludes a session that falls just outside the window', () => {
+    // Spring is 98 days back: inside six months, outside three.
+    expect(sessionsInRange(ALL, 91, NOW).some((s) => s.id === 'spring')).toBe(false);
+    expect(sessionsInRange(ALL, 182, NOW).some((s) => s.id === 'spring')).toBe(true);
+  });
+
+  it('returns everything when the window is all time', () => {
+    expect(sessionsInRange(ALL, undefined, NOW)).toHaveLength(4);
+  });
+
+  it('resolves a range to its widest pair, not its two newest', () => {
+    // Six months holds three sessions; the pair is the span, not the two
+    // most recent that happen to fall inside.
+    const resolved = resolveRange(ALL, 182, NOW);
+
+    expect(resolved?.earlier.id).toBe('spring');
+    expect(resolved?.later.id).toBe('recent');
+    expect(resolved?.later.id).not.toBe('summer');
+  });
+
+  it('refuses a window holding fewer than two sessions', () => {
+    // One session is not a comparison, and widening the range to find a
+    // second would answer a question the athlete did not ask.
+    expect(resolveRange(ALL, 42, NOW)).toBeUndefined();
+    expect(resolveRange([], undefined, NOW)).toBeUndefined();
+    expect(resolveRange([RECENT], undefined, NOW)).toBeUndefined();
+  });
+
+  it('handles an unordered input list', () => {
+    const shuffled = [WINTER, RECENT, SPRING, SUMMER];
+    expect(resolveRange(shuffled, undefined, NOW)?.earlier.id).toBe('winter');
+  });
+});
+
+describe('selectSlot', () => {
+  const current = { earlierId: 'june', laterId: 'september' };
+
+  it('sets the slot that was tapped', () => {
+    expect(selectSlot(current, 'earlier', 'march')).toEqual({
+      earlierId: 'march',
+      laterId: 'september',
+    });
+    expect(selectSlot(current, 'later', 'october')).toEqual({
+      earlierId: 'june',
+      laterId: 'october',
+    });
+  });
+
+  it('swaps rather than putting one session on both sides', () => {
+    // A session compared against itself produces a column of zeroes, which
+    // looks like a finding and is not one.
+    expect(selectSlot(current, 'earlier', 'september')).toEqual({
+      earlierId: 'september',
+      laterId: 'june',
+    });
+    expect(selectSlot(current, 'later', 'june')).toEqual({
+      earlierId: 'september',
+      laterId: 'june',
+    });
+  });
+
+  it('is a no-op when the slot already holds that session', () => {
+    expect(selectSlot(current, 'earlier', 'june')).toEqual(current);
   });
 });

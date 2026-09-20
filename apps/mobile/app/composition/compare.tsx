@@ -24,8 +24,12 @@ import { STUB_SESSION_HISTORY } from '../../src/lib/composition-history-stub';
 import { useCompositionSessions } from '../../src/lib/composition-session-store';
 import { useMeasurementUnit } from '../../src/lib/measurement-units';
 import {
+  RANGE_PRESETS,
   comparableRows,
   compareSessions,
+  resolveRange,
+  selectSlot,
+  sessionsInRange,
   totalChangeCm,
   type ComparisonRow,
 } from '../../src/lib/composition-compare';
@@ -59,13 +63,36 @@ export default function CompareScreen(): React.ReactElement {
     (a, b) => Date.parse(b.capturedAt) - Date.parse(a.capturedAt),
   );
 
-  const [laterId, setLaterId] = useState(() => sessions[0]?.id);
-  const [earlierId, setEarlierId] = useState(() => sessions[sessions.length - 1]?.id);
+  /**
+   * Two ways to say what to compare.
+   *
+   * Picking two sessions is precise; picking a window is what someone actually
+   * asks for most of the time ("how have the last three months gone?"). Neither
+   * is a shortcut for the other, so both are offered rather than one being
+   * implemented as a preset of the other.
+   */
+  const [mode, setMode] = useState<'sessions' | 'range'>('sessions');
+  const [rangeKey, setRangeKey] = useState<string>('all');
 
-  const later = sessions.find((session) => session.id === laterId);
-  const earlier = sessions.find((session) => session.id === earlierId);
+  const [slots, setSlots] = useState(() => ({
+    earlierId: sessions[sessions.length - 1]?.id ?? '',
+    laterId: sessions[0]?.id ?? '',
+  }));
 
-  if (sessions.length < 2 || !later || !earlier) {
+  const preset = RANGE_PRESETS.find((option) => option.key === rangeKey) ?? RANGE_PRESETS.at(-1)!;
+  const resolved = resolveRange(sessions, preset.days);
+  const inRangeCount = sessionsInRange(sessions, preset.days).length;
+
+  const pair =
+    mode === 'range'
+      ? resolved
+      : (() => {
+          const earlierPick = sessions.find((session) => session.id === slots.earlierId);
+          const laterPick = sessions.find((session) => session.id === slots.laterId);
+          return earlierPick && laterPick ? { earlier: earlierPick, later: laterPick } : undefined;
+        })();
+
+  if (sessions.length < 2) {
     return (
       <Screen>
         <EmptyState
@@ -76,73 +103,130 @@ export default function CompareScreen(): React.ReactElement {
     );
   }
 
-  const comparison = compareSessions(earlier, later);
-  const comparable = comparableRows(comparison);
-  const total = totalChangeCm(comparison);
+  const comparison = pair ? compareSessions(pair.earlier, pair.later) : undefined;
+  const comparable = comparison ? comparableRows(comparison) : [];
+  const total = comparison ? totalChangeCm(comparison) : undefined;
 
   return (
     <Screen>
       <Stack gap={spacing.xl}>
         <View>
-          <SectionHeader title="Sessions" />
+          <SectionHeader title="What to compare" />
           <Card>
             <Stack gap={spacing.lg}>
-              <SessionPicker
-                label="Earlier"
-                sessions={sessions}
-                selectedId={comparison.earlier.id}
-                onSelect={setEarlierId}
-              />
-              <Divider />
-              <SessionPicker
-                label="Later"
-                sessions={sessions}
-                selectedId={comparison.later.id}
-                onSelect={setLaterId}
-              />
-              <Type variant="caption" tone="tertiary">
-                {comparison.daysApart === 0
-                  ? 'Both sessions were taken on the same day.'
-                  : `${comparison.daysApart} days apart, ${sessionLabel(comparison.earlier)} to ${sessionLabel(comparison.later)}.`}
-              </Type>
-            </Stack>
-          </Card>
-        </View>
-
-        <View>
-          <SectionHeader title="What changed" />
-          <Card>
-            <Stack gap={spacing.lg}>
-              <Type variant="body" tone="secondary">
-                {comparable.length === 0
-                  ? 'These two sessions share no measure point, so there is nothing to compare. Measuring the same points in both is what makes a comparison possible.'
-                  : `${comparable.length} of ${comparison.rows.length} points measured in both sessions.`}
-              </Type>
-
-              {total !== undefined ? (
-                <Stack gap={spacing.xs}>
-                  <Type variant="overline" tone="tertiary" accessibilityRole="header">
-                    TOTAL ACROSS THOSE POINTS
-                  </Type>
-                  {/* Neutral tone throughout: the app cannot know whether a
-                      total coming down is the news the athlete wanted. */}
-                  <Type variant="metricMedium">{formatSignedLength(total, defaultUnit)}</Type>
-                </Stack>
-              ) : null}
-
-              <Divider />
-
-              <Stack gap={spacing.md}>
-                {comparison.rows.map((row, index) => (
-                  <React.Fragment key={row.point.id}>
-                    {index > 0 ? <Divider /> : null}
-                    <ChangeRow row={row} displayUnit={defaultUnit} />
-                  </React.Fragment>
-                ))}
+              <Stack direction="row" gap={spacing.sm}>
+                <Chip
+                  label="Two sessions"
+                  selected={mode === 'sessions'}
+                  tone={mode === 'sessions' ? 'accent' : 'neutral'}
+                  onPress={() => setMode('sessions')}
+                />
+                <Chip
+                  label="Time range"
+                  selected={mode === 'range'}
+                  tone={mode === 'range' ? 'accent' : 'neutral'}
+                  onPress={() => setMode('range')}
+                />
               </Stack>
+
+              <Divider />
+
+              {mode === 'sessions' ? (
+                <Stack gap={spacing.lg}>
+                  <SessionPicker
+                    label="Earlier"
+                    sessions={sessions}
+                    selectedId={slots.earlierId}
+                    onSelect={(id) => setSlots((current) => selectSlot(current, 'earlier', id))}
+                  />
+                  <Divider />
+                  <SessionPicker
+                    label="Later"
+                    sessions={sessions}
+                    selectedId={slots.laterId}
+                    onSelect={(id) => setSlots((current) => selectSlot(current, 'later', id))}
+                  />
+                  {/* Picking the session already in the other slot swaps them
+                      rather than comparing a session against itself. */}
+                  <Type variant="caption" tone="tertiary">
+                    Choosing a session already on the other side swaps the two.
+                  </Type>
+                </Stack>
+              ) : (
+                <Stack gap={spacing.md}>
+                  <Stack direction="row" gap={spacing.sm} style={{ flexWrap: 'wrap' }}>
+                    {RANGE_PRESETS.map((option) => (
+                      <Chip
+                        key={option.key}
+                        label={option.label}
+                        selected={option.key === preset.key}
+                        tone={option.key === preset.key ? 'accent' : 'neutral'}
+                        onPress={() => setRangeKey(option.key)}
+                      />
+                    ))}
+                  </Stack>
+                  <Type variant="caption" tone="tertiary">
+                    {inRangeCount === 0
+                      ? 'No sessions in this window.'
+                      : inRangeCount === 1
+                        ? 'Only one session in this window, so there is nothing to compare it against. Try a longer range.'
+                        : `${inRangeCount} sessions in this window. The comparison spans the oldest and newest of them.`}
+                  </Type>
+                </Stack>
+              )}
+
+              {comparison ? (
+                <Type variant="caption" tone="secondary">
+                  {comparison.daysApart === 0
+                    ? 'Both sessions were taken on the same day.'
+                    : `${comparison.daysApart} days apart, ${sessionLabel(comparison.earlier)} to ${sessionLabel(comparison.later)}.`}
+                </Type>
+              ) : null}
             </Stack>
           </Card>
         </View>
+
+        {comparison ? (
+          <View>
+            <SectionHeader title="What changed" />
+            <Card>
+              <Stack gap={spacing.lg}>
+                <Type variant="body" tone="secondary">
+                  {comparable.length === 0
+                    ? 'These two sessions share no measure point, so there is nothing to compare. Measuring the same points in both is what makes a comparison possible.'
+                    : `${comparable.length} of ${comparison.rows.length} points measured in both sessions.`}
+                </Type>
+
+                {total !== undefined ? (
+                  <Stack gap={spacing.xs}>
+                    <Type variant="overline" tone="tertiary" accessibilityRole="header">
+                      TOTAL ACROSS THOSE POINTS
+                    </Type>
+                    {/* Neutral tone throughout: the app cannot know whether a
+                        total coming down is the news the athlete wanted. */}
+                    <Type variant="metricMedium">{formatSignedLength(total, defaultUnit)}</Type>
+                  </Stack>
+                ) : null}
+
+                <Divider />
+
+                <Stack gap={spacing.md}>
+                  {comparison.rows.map((row, index) => (
+                    <React.Fragment key={row.point.id}>
+                      {index > 0 ? <Divider /> : null}
+                      <ChangeRow row={row} displayUnit={defaultUnit} />
+                    </React.Fragment>
+                  ))}
+                </Stack>
+              </Stack>
+            </Card>
+          </View>
+        ) : (
+          <EmptyState
+            title="Pick a pair to compare"
+            body="A time range needs at least two sessions inside it. Widen the range, or choose two sessions directly."
+          />
+        )}
       </Stack>
     </Screen>
   );

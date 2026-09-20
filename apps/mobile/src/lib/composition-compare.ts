@@ -134,3 +134,89 @@ export function netChangeForPoint(
 
   return netChangeCm(readings);
 }
+
+// ---------------------------------------------------------------------------
+// Choosing what to compare
+// ---------------------------------------------------------------------------
+
+export interface RangePreset {
+  key: string;
+  label: string;
+  /** Window length in days. Undefined means every session on record. */
+  days?: number;
+}
+
+/**
+ * Windows an athlete is likely to want.
+ *
+ * Composition changes on a scale of months, not weeks, so the shortest option
+ * is six weeks rather than one. A window short enough to show mostly
+ * measurement noise would invite reading that noise as progress.
+ */
+export const RANGE_PRESETS: readonly RangePreset[] = [
+  { key: '6w', label: '6 weeks', days: 42 },
+  { key: '3m', label: '3 months', days: 91 },
+  { key: '6m', label: '6 months', days: 182 },
+  { key: '1y', label: '1 year', days: 365 },
+  { key: 'all', label: 'All time' },
+];
+
+/** Sessions falling inside a window ending now, newest first. */
+export function sessionsInRange(
+  sessions: readonly BodyCompositionSession[],
+  days: number | undefined,
+  now: Date = new Date(),
+): BodyCompositionSession[] {
+  const ordered = [...sessions].sort((a, b) => Date.parse(b.capturedAt) - Date.parse(a.capturedAt));
+
+  if (days === undefined) return ordered;
+
+  const cutoff = now.getTime() - days * 86_400_000;
+  return ordered.filter((session) => Date.parse(session.capturedAt) >= cutoff);
+}
+
+/**
+ * The pair a time range resolves to: its oldest and newest session.
+ *
+ * The widest comparison the window allows, because that is what someone asking
+ * for "the last three months" means — not the two most recent sessions that
+ * happen to fall inside it.
+ *
+ * Undefined when fewer than two sessions fall in the window. One session is not
+ * a comparison, and quietly widening the range to find a second would answer a
+ * question the athlete did not ask.
+ */
+export function resolveRange(
+  sessions: readonly BodyCompositionSession[],
+  days: number | undefined,
+  now: Date = new Date(),
+): { earlier: BodyCompositionSession; later: BodyCompositionSession } | undefined {
+  const inRange = sessionsInRange(sessions, days, now);
+  if (inRange.length < 2) return undefined;
+
+  // `sessionsInRange` returns newest first.
+  return { earlier: inRange[inRange.length - 1]!, later: inRange[0]! };
+}
+
+/**
+ * Choose a session for one slot, keeping the two slots distinct.
+ *
+ * Picking the session already in the other slot swaps them rather than putting
+ * the same session on both sides. A session compared against itself produces a
+ * column of zeroes, which looks like a finding and is not one.
+ */
+export function selectSlot(
+  current: { earlierId: string; laterId: string },
+  slot: 'earlier' | 'later',
+  sessionId: string,
+): { earlierId: string; laterId: string } {
+  const other = slot === 'earlier' ? current.laterId : current.earlierId;
+
+  if (sessionId === other) {
+    return { earlierId: current.laterId, laterId: current.earlierId };
+  }
+
+  return slot === 'earlier'
+    ? { ...current, earlierId: sessionId }
+    : { ...current, laterId: sessionId };
+}
